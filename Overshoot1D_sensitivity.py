@@ -17,7 +17,7 @@ from scipy.integrate import quad
 # constants
 D = 0.00025
 constant = np.sqrt(9.81 * D)
-Shields = np.linspace(0.02, 0.06, 5)
+Shields = np.linspace(0.01, 0.06, 6)
 u_star = np.sqrt(Shields * (2650-1.225)*9.81*D/1.225)
 
 # mass of air per unit area
@@ -25,7 +25,7 @@ hsal = 0.2 - 0.00025*10
 mass_air = 1.225 * hsal
 CD_air = 9e-3
 CD_bed = 3e-4
-CD_drag_reduce = 0.3
+CD_drag_reduce = 0.5
 
 # numerically solves Uim from Usal
 def solveUim(Uim, u_sal):
@@ -142,7 +142,7 @@ def make_odefun(u_star, UE0):
         # splash functions
         COR = 5.17 * (abs(Uim_solution) / constant + 1e-9)**(-0.6) #5.17 # 0.7469*np.exp(0.1374*1.5)*(Uim_solution/constant)**(-0.0741*np.exp(0.2140*1.5)) # np.sqrt(0.45)
         Pr = 0.94 * np.exp(-7.11 * np.exp(-0.11 * abs(Uim_solution) / constant)) # MeanPr(Uim_solution, 0.64) # 0.96*(1-np.exp(- Uim_solution)) 
-        arg_re = -0.0006 * Uim_solution / constant + 0.65 # 45/180*np.pi
+        arg_re = -0.0006 * abs(Uim_solution) / constant + 0.65 # 45/180*np.pi
         arg_re_clipped = np.clip(arg_re, -1.0, 1.0)
         if np.any((arg_re < -1) | (arg_re > 1)):
             print("Warning: arg_re out of domain, clipping applied")
@@ -150,9 +150,9 @@ def make_odefun(u_star, UE0):
         # theta_re_rad = theta_re/180*np.pi
         NE = 0.04 * abs(Uim_solution) / constant # 0.04
         if Uim_solution >= 0:
-            UE = 5.02 * constant#0.15/0.02*(1-np.exp(-Uim_solution/constant/40))*constant# # 5.02  #   # 1.18*(Uim_solution/constant)**0.25*constant
+            UE = UE0 * constant#0.15/0.02*(1-np.exp(-Uim_solution/constant/40))*constant# # 5.02  #   # 1.18*(Uim_solution/constant)**0.25*constant
         else:
-            UE = -5.02 * constant #0.15/0.02*(1-np.exp(-Uim_solution/constant/40))*constant#
+            UE = -UE0 * constant #0.15/0.02*(1-np.exp(-Uim_solution/constant/40))*constant#
         Ure = Uim_solution * COR
         cos_thetare = np.cos(theta_re)
         
@@ -188,7 +188,7 @@ def make_odefun(u_star, UE0):
 c0 = 0.0139
 Usal0 = 2.9279
 # Uair0 = [4.6827, 6.8129, 8.4490, 9.8194, 11.0206, 12.1046]  #h=0.1, u_air_end = 5.4162 m/s for Shields=0.06
-Uair0 = [7.4, 9.2, 10.7, 12.0, 13.1] #h=0.2 # Shields=0.01 uair0=5.1
+Uair0 = [5.1, 7.4, 9.2, 10.7, 12.0, 13.1] #h=0.2 # Shields=0.01 uair0=5.1
 #testing parameters
 # CD_air_list = [3e-3, 5e-3, 7e-3, 9e-3] # [3e-4, 5e-4, 7e-4, 1e-3] 
 # CD_drag_reduced_list = [0.2, 0.3, 0.4, 0.5, 1]
@@ -266,7 +266,7 @@ for i, ax in enumerate(axs):
     ax.grid(True)
     if i == 0:
         ax.legend()
-fig.suptitle(r'$\Theta$=0.06, CD_air=9e-3, CD_drag_reduced=0.3')
+fig.suptitle(r'$\Theta$=0.06, CD_air={CD_air}, CD_drag_reduced={CD_drag_reduce}')
 plt.tight_layout()
 plt.show()
 
@@ -284,7 +284,7 @@ plt.show()
 # plt.show()
 
 #calculate steady Q
-Q_steady_dpm = [0.0137, 0.0188, 0.0257, 0.0398, 0.0392] #dpm Shields=0.01 Qs=0.0047
+Q_steady_dpm = [0.0047, 0.0137, 0.0188, 0.0257, 0.0398, 0.0392] #dpm Shields=0.01 Qs=0.0047
 Q_steady_all = []
 
 for idx, a in enumerate(UE0_list):
@@ -304,7 +304,7 @@ plt.ylabel(r'$Q_\mathrm{steady}$ [kg/m/s]')
 plt.xlim(left=0)
 plt.ylim(bottom=0)
 plt.legend()
-plt.title(r'$\Theta$=0.06, CD_air=9e-3, CD_drag_reduced=0.3')
+plt.title(fr'$\Theta$=0.06, CD_air={CD_air}, CD_drag_reduced={CD_drag_reduce}')
 plt.tight_layout()
 plt.show()
         

@@ -15,7 +15,7 @@ from scipy.integrate import quad
 # constants
 D = 0.00025
 constant = np.sqrt(9.81 * D)
-Shields = np.linspace(0.02, 0.06, 5)
+Shields = np.linspace(0.01, 0.06, 6)
 u_star = np.sqrt(Shields * (2650-1.225)*9.81*D/1.225)
 
 # mass of air per unit area
@@ -69,7 +69,7 @@ def make_odefun(u_star):
         # splash functions
         COR = 5.17 * (abs(Uim_solution) / constant + 1e-9)**(-0.6) 
         Pr = 0.94 * np.exp(-7.11 * np.exp(-0.11 * abs(Uim_solution) / constant)) 
-        arg_re = -0.0006 * Uim_solution / constant + 0.65 
+        arg_re = -0.0006 * abs(Uim_solution) / constant + 0.65 
         arg_re_clipped = np.clip(arg_re, -1.0, 1.0)
         if np.any((arg_re < -1) | (arg_re > 1)):
             print("Warning: arg_re out of domain, clipping applied")
@@ -113,7 +113,7 @@ def make_odefun(u_star):
 c0 = 0.0139
 Usal0 = 2.9279
 # Uair0 = [4.6827, 6.8129, 8.4490, 9.8194, 11.0206, 12.1046]  #h=0.1, u_air_end = 5.4162 m/s for Shields=0.06
-Uair0 = [7.4, 9.2, 10.7, 12.0, 13.1] #h=0.2 # Shields=0.01 uair0=5.1
+Uair0 = [5.1, 7.4, 9.2, 10.7, 12.0, 13.1] #h=0.2 # Shields=0.01 uair0=5.1
 # Time span
 t_span = [0, 20]
 t_eval = np.linspace(t_span[0], t_span[1], 500)
@@ -173,7 +173,7 @@ plt.tight_layout()
 plt.show()
 
 # calculate steady Q
-Q_steady_dpm = [0.0137, 0.0188, 0.0257, 0.0398, 0.0392] #dpm Shields=0.01 Qs=0.0047
+Q_steady_dpm = [0.0047, 0.0137, 0.0188, 0.0257, 0.0398, 0.0392] #dpm Shields=0.01 Qs=0.0047
 Q_steady = np.zeros(len(u_star))
 for i in range(len(u_star)):
     Qs = np.mean(y_eval[i][1][300:])
