@@ -19,6 +19,12 @@ constant = np.sqrt(9.81 * D)
 CD_air = 9e-3
 CD_drag_reduce = 0.5
 CD_bed = 3e-4
+
+# ejection angle
+cos_thetaej = np.cos(47/180*np.pi)
+#deposition angle
+theta_dep = 25/180*np.pi
+
 # mass of air per unit area
 hsal = 0.2 - 0.00025*10
 mass_air = 1.225 * hsal
@@ -28,7 +34,18 @@ u_star = np.sqrt(Shields * (2650-1.225)*9.81*0.00025/1.225)
 Omega = np.array([0, 0.01, 0.05, 0.1, 0.2])
 
 # numerically solves Uim from Usal
+# def solveUim(Uim, u_sal, Omega):
+#     alpha = 39.21 - 2.31*Omega**0.53 
+#     beta = 15.74 * (1-np.exp(-102.58*Omega)) + 105.73
+#     denom = Uim / constant + beta
+#     arg = alpha / denom
+#     if np.abs(arg) > 1:
+#         return np.inf
+#     theta = np.arcsin(arg)
+#     return Uim * np.cos(theta) - u_sal
 def solveUim(Uim, u_sal, Omega):
+    Pr = 0.94 * np.exp(-7.11 * np.exp(-0.11 * abs(Uim) / constant)) 
+    Udep = 0.18*Uim
     alpha = 39.21 - 2.31*Omega**0.53 
     beta = 15.74 * (1-np.exp(-102.58*Omega)) + 105.73
     denom = Uim / constant + beta
@@ -36,7 +53,7 @@ def solveUim(Uim, u_sal, Omega):
     if np.abs(arg) > 1:
         return np.inf
     theta = np.arcsin(arg)
-    return Uim * np.cos(theta) - u_sal
+    return Uim*Pr*np.cos(theta) + (1-Pr)*Udep*np.cos(theta_dep) - u_sal
 
 def Calfd(u_air, u_sal):
     C_D = (np.sqrt(0.5) + np.sqrt(24 / (abs(u_air - u_sal) * D/(1.45e-6))))**2
@@ -61,11 +78,6 @@ def make_odefun(u_star, Omega, splash_history):
         if np.any((arg_im < -1) | (arg_im > 1)):
             print("Warning: arg_im out of domain, clipping applied")
         theta_im = np.arcsin(arg_im_clipped)
-        
-        # ejection angle
-        cos_thetaej = np.cos(47/180*np.pi)
-        #deposition angle
-        theta_dep = 25/180*np.pi
         
         # time scale for collision and deposition
         u_dep = Uim_solution*0.18
@@ -105,10 +117,10 @@ def make_odefun(u_star, Omega, splash_history):
         mom_re = y[0] * Pr * Ure * cos_thetare 
         # mass is lost through deposition, mom is lost through incident motion
         mass_dep = (1-Pr) * y[0]
-        mom_inc =  y[0] * Pr * u_sal/Tim + y[0] * (1 - Pr) * u_dep*np.cos(theta_dep)/Tdep 
+        mom_inc =  y[0] * Pr * Uim_solution*np.cos(theta_im)/Tim + y[0] * (1 - Pr) * u_dep*np.cos(theta_dep)/Tdep 
         
         # momentum of air gets replenished slowly through shear at the top boundary
-        u_am = u_star/0.4 * np.log((hsal-0.00025*10)/(0.00025/30)) #law of the wall (COMSALT)
+        u_am = u_star/0.4 * np.log(hsal/(D/30)) #law of the wall (COMSALT)
         mom_air_gain =  0.5* CD_air * 1.225 * (u_am - u_air) *abs(u_am - u_air) # 1.225 * u_star **2
         # momentum of air gets lost slowly from bed shear
         mom_air_loss = 0.5* 1.225 * CD_bed * u_air * abs(u_air) 
@@ -239,7 +251,7 @@ plt.subplot(1,3,1)
 for i in range(len(u_star)):
     plt.plot(Omega*100, Q_steady_all[i], 'o', label=f"$\Theta$=0.0{i+1}")
 plt.legend()
-plt.xlabel(r'$\Omega$')
+plt.xlabel(r'$\Omega$ [$\%$]')
 plt.ylabel(r'$Q_\mathrm{steady}$ [kg/m/s]')
 # plt.xlim(left=0)
 plt.ylim(-0.01, 0.1)
@@ -247,7 +259,7 @@ plt.xticks([0, 1, 5, 10, 20])
 plt.subplot(1,3,2)
 for i in range(len(u_star)):
     plt.plot(Omega*100, C_steady_all[i], 'o')
-plt.xlabel(r'$\Omega$')
+plt.xlabel(r'$\Omega$ [$\%$]')
 plt.ylabel(r'$C_\mathrm{steady}$ [kg/m$^2$]')
 # plt.xlim(left=0)
 plt.ylim(-0.01, 0.08)
@@ -255,7 +267,7 @@ plt.xticks([0, 1, 5, 10, 20])
 plt.subplot(1,3,3)
 for i in range(len(u_star)):
     plt.plot(Omega*100, U_steady_all[i], 'o')
-plt.xlabel(r'$\Omega$')
+plt.xlabel(r'$\Omega$ [$\%$]')
 plt.ylabel(r'$U_\mathrm{sal,steady}$ [m/s]')
 # plt.xlim(left=0)
 plt.ylim(0, 2)

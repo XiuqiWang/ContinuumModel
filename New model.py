@@ -24,15 +24,26 @@ mass_air = 1.225 * hsal
 CD_air = 9e-3
 CD_bed = 3e-4
 CD_drag_reduce = 0.3
+cos_thetaej = np.cos(47/180*np.pi)
+theta_dep = 25/180*np.pi
 
 # numerically solves Uim from Usal
+# def solveUim(Uim, u_sal):
+#     denom = Uim / constant + 105.73
+#     arg = 39.21 / denom
+#     if np.abs(arg) > 1:
+#         return np.inf
+#     theta = np.arcsin(arg)
+#     return Uim * np.cos(theta) - u_sal
 def solveUim(Uim, u_sal):
+    Pr = 0.94 * np.exp(-7.11 * np.exp(-0.11 * abs(Uim) / constant)) 
+    Udep = 0.18*Uim
     denom = Uim / constant + 105.73
     arg = 39.21 / denom
     if np.abs(arg) > 1:
         return np.inf
     theta = np.arcsin(arg)
-    return Uim * np.cos(theta) - u_sal
+    return Uim*Pr*np.cos(theta) + (1-Pr)*Udep*np.cos(theta_dep) - u_sal
 
 def Calfd(u_air, u_sal):
     C_D = (np.sqrt(0.5) + np.sqrt(24 / (abs(u_air - u_sal) * D/(1.45e-6))))**2
@@ -55,11 +66,6 @@ def make_odefun(u_star):
         if np.any((arg_im < -1) | (arg_im > 1)):
             print("Warning: arg_im out of domain, clipping applied")
         theta_im = np.arcsin(arg_im_clipped)
-        
-        # ejection angle
-        cos_thetaej = np.cos(47/180*np.pi)
-        #deposition angle
-        theta_dep = 25/180*np.pi
         
         # time scale for collision and deposition
         u_dep = Uim_solution*0.18
@@ -94,10 +100,10 @@ def make_odefun(u_star):
         mom_re = y[0] * Pr * Ure * cos_thetare 
         # mass is lost through deposition, mom is lost through incident motion
         mass_dep = (1-Pr) * y[0]
-        mom_inc =  y[0] * Pr * u_sal/Tim + y[0] * (1 - Pr) * u_dep*np.cos(theta_dep)/Tdep 
+        mom_inc =  y[0] * Pr * Uim_solution*np.cos(theta_im)/Tim + y[0] * (1 - Pr) * u_dep*np.cos(theta_dep)/Tdep 
         
         # momentum of air gets replenished slowly through shear at the top boundary
-        u_am = u_star/0.4 * np.log((hsal-0.00025*10)/(0.00025/30)) #law of the wall (COMSALT)
+        u_am = u_star/0.4 * np.log(hsal/(D/30)) #law of the wall (COMSALT)
         mom_air_gain =  0.5* CD_air * 1.225 * (u_am - u_air) *abs(u_am - u_air) # 1.225 * u_star **2
         # momentum of air gets lost slowly from bed shear
         mom_air_loss = 0.5* 1.225 * CD_bed * u_air * abs(u_air) 
@@ -155,7 +161,7 @@ for i, ax in enumerate(axs):
     ax.grid(True)
     if i == 0:
         ax.legend()
-fig.suptitle(r'$\Theta$=0.06, CD_air=9e-3, CD_drag_reduced=0.3')
+fig.suptitle(r'$\Theta$=0.06, CD_air=9e-3, CD_drag_reduced=0.3, Usal=Pr*Uim,x+(1-Pr)*Udep,x')
 plt.tight_layout()
 plt.show()
 
@@ -168,7 +174,7 @@ plt.xlim(left=0)
 plt.ylabel(r'$Q$ [kg/m/s]')
 plt.ylim(bottom=0)
 plt.xlim(left=0)
-plt.title('CD_air = 9e-3, CD_drag_reduced=0.3')
+plt.title('CD_air = 9e-3, CD_drag_reduced=0.3, Usal=Pr*Uim,x+(1-Pr)*Udep,x')
 plt.tight_layout()
 plt.show()
 
@@ -187,6 +193,6 @@ plt.ylabel(r'$Q_\mathrm{steady}$ [kg/m/s]')
 plt.xlim(left=0)
 plt.ylim(bottom=0)
 plt.legend()
-plt.title(r'$\Theta$=0.06, CD_air=9e-3, CD_drag_reduced=0.3')
+plt.title(r'$\Theta$=0.06, CD_air=9e-3, CD_drag_reduced=0.3, Usal=Pr*Uim,x+(1-Pr)*Udep,x')
 plt.tight_layout()
 plt.show()
