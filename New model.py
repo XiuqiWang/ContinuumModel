@@ -23,7 +23,7 @@ hsal = 0.2 - 0.00025*10
 mass_air = 1.225 * hsal
 CD_air = 9e-3
 CD_bed = 3e-4
-CD_drag_reduce = 0.3
+CD_drag_reduce = 1
 cos_thetaej = np.cos(47/180*np.pi)
 theta_dep = 25/180*np.pi
 
@@ -80,8 +80,7 @@ def make_odefun(u_star):
         if np.any((arg_re < -1) | (arg_re > 1)):
             print("Warning: arg_re out of domain, clipping applied")
         theta_re = np.arcsin(arg_re_clipped)
-        # theta_re_rad = theta_re/180*np.pi
-        NE = 0.04 * abs(Uim_solution) / constant # 0.04
+        NE = 0.04 * abs(Uim_solution) / constant 
         if Uim_solution >= 0:
             UE = 5.02 * constant
         else:
@@ -97,14 +96,15 @@ def make_odefun(u_star):
         # mass is gained through sand erosion, mom is gained through erosion and rebound
         mass_ero =  NE * y[0] 
         mom_ero = mass_ero * UE * cos_thetaej 
-        mom_re = y[0] * Pr * Ure * cos_thetare 
+        mass_im = y[0] * Pr
+        mom_re = mass_im * Ure * cos_thetare 
         # mass is lost through deposition, mom is lost through incident motion
         mass_dep = (1-Pr) * y[0]
-        mom_inc =  y[0] * Pr * Uim_solution*np.cos(theta_im)/Tim + y[0] * (1 - Pr) * u_dep*np.cos(theta_dep)/Tdep 
+        mom_inc =  mass_im * Uim_solution*np.cos(theta_im)/Tim + mass_dep * u_dep*np.cos(theta_dep)/Tdep 
         
         # momentum of air gets replenished slowly through shear at the top boundary
         u_am = u_star/0.4 * np.log(hsal/(D/30)) #law of the wall (COMSALT)
-        mom_air_gain =  0.5* CD_air * 1.225 * (u_am - u_air) *abs(u_am - u_air) # 1.225 * u_star **2
+        mom_air_gain = 0.5* CD_air * 1.225 * (u_am - u_air) *abs(u_am - u_air) # 1.225 * u_star **2
         # momentum of air gets lost slowly from bed shear
         mom_air_loss = 0.5* 1.225 * CD_bed * u_air * abs(u_air) 
         
@@ -116,10 +116,11 @@ def make_odefun(u_star):
     return odefun
     
 # Initial conditions
-c0 = 0.0139
-Usal0 = 2.9279
+c0 = 0.0139 # 0.147
+Usal0 = 2.9279 # 0.55
 # Uair0 = [4.6827, 6.8129, 8.4490, 9.8194, 11.0206, 12.1046]  #h=0.1, u_air_end = 5.4162 m/s for Shields=0.06
-Uair0 = [5.1, 7.4, 9.2, 10.7, 12.0, 13.1] #h=0.2 # Shields=0.01 uair0=5.1
+# Uair0 = [5.1, 7.4, 9.2, 10.7, 12.0, 13.1] #h=0.2 # Shields=0.01 uair0=5.1 #13.1 #0.01s 3.93
+Uair0 = [1.45, 4.47, 5.70, 6.62, 7.40, 8.11] # Uair derived from total drag force
 # Time span
 t_span = [0, 20]
 t_eval = np.linspace(t_span[0], t_span[1], 500)
@@ -134,13 +135,13 @@ for i in range(len(Uair0)):
 
 #calibrate splash functions with DPM data
 # Read the data at Shields=0.06
-data = np.loadtxt('Shields006.txt', delimiter=',')
+data = np.loadtxt('Shields006dry.txt', delimiter=',')
 Q_dpm = data[:, 0]
 C_dpm = data[:, 1]
 U_dpm = data[:, 2]
 t_dpm = np.linspace(0,5,502)
-data_ua = np.loadtxt('Uair_ave-t.txt', delimiter='\t')
-Ua_dpm = np.insert(data_ua[:, 1], 0, Uair0[-1])
+data_ua = np.loadtxt('TotalDragForce/u_airS006dry.txt', delimiter='\t')
+Ua_dpm = np.insert(data_ua, 0, Uair0[-1])
 
 plt.close('all')
 # Define the labels and keys once for reuse
@@ -167,7 +168,7 @@ plt.show()
 
 plt.figure()
 for i in range(len(u_star)):
-    plt.plot(t_eval, y_eval[i][1], label=f"$\Theta$=0.0{i+2}")
+    plt.plot(t_eval, y_eval[i][1], label=f"$\Theta$=0.0{i+1}")
 plt.legend()
 plt.xlabel('Time [s]')
 plt.xlim(left=0)
