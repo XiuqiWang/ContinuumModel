@@ -23,9 +23,14 @@ u_star = np.sqrt(Shields * (2650-1.225)*9.81*D/1.225)
 # mass of air per unit area
 hsal = 0.2 - 0.00025*10
 mass_air = 1.225 * hsal
+
+# parameters for calibration
 CD_air = 9e-3
 CD_bed = 3e-4
-CD_drag_reduce = 0.5
+C_drag_reduce = 1
+C_mass_ero = 1
+C_mass_dep = 1
+C_mass_im = 1
 
 # numerically solves Uim from Usal
 def solveUim(Uim, u_sal):
@@ -150,9 +155,9 @@ def make_odefun(u_star, UE0):
         # theta_re_rad = theta_re/180*np.pi
         NE = 0.04 * abs(Uim_solution) / constant # 0.04
         if Uim_solution >= 0:
-            UE = UE0 * constant#0.15/0.02*(1-np.exp(-Uim_solution/constant/40))*constant# # 5.02  #   # 1.18*(Uim_solution/constant)**0.25*constant
+            UE = 5.02 * constant#0.15/0.02*(1-np.exp(-Uim_solution/constant/40))*constant# # 5.02  #   # 1.18*(Uim_solution/constant)**0.25*constant
         else:
-            UE = -UE0 * constant #0.15/0.02*(1-np.exp(-Uim_solution/constant/40))*constant#
+            UE = -5.02 * constant #0.15/0.02*(1-np.exp(-Uim_solution/constant/40))*constant#
         Ure = Uim_solution * COR
         cos_thetare = np.cos(theta_re)
         
@@ -162,14 +167,15 @@ def make_odefun(u_star, UE0):
         fd_sal = Calfd(u_air, u_sal) # the drag force on high-energy saltating particles
         # fd_dep = Calfd(u_air, u_dep*np.cos(theta_dep)) # the drag force on low-energy depositing particles
         mp = 2650 * np.pi/6 * D**3 #particle mass
-        mom_drag = CD_drag_reduce * y[0]*fd_sal/mp
+        mom_drag = C_drag_reduce * y[0]*fd_sal/mp
         # mass is gained through sand erosion, mom is gained through erosion and rebound
         mass_ero =  NE * y[0] 
         mom_ero = mass_ero * UE * cos_thetaej # MeanUlognorm(UE, 0.7)
-        mom_re = y[0] * Pr * Ure * cos_thetare # MeanUlognorm(Ure, 0.66)
+        mass_im = y[0] * Pr
+        mom_re = mass_im * Ure * cos_thetare # MeanUlognorm(Ure, 0.66)
         # mass is lost through deposition, mom is lost through incident motion
         mass_dep = (1-Pr) * y[0]
-        mom_inc =  y[0] * Pr * u_sal/Tim + y[0] * (1 - Pr) * u_dep*np.cos(theta_dep)/Tdep #  # MeanUlognorm(u_sal, 0.66)
+        mom_inc = mass_im * Uim_solution*np.cos(theta_im)/Tim + mass_dep * u_dep*np.cos(theta_dep)/Tdep #  # MeanUlognorm(u_sal, 0.66)
         
         # momentum of air gets replenished slowly through shear at the top boundary
         u_am = u_star/0.4 * np.log((hsal-0.00025*10)/(0.00025/30)) #law of the wall (COMSALT)
@@ -188,7 +194,10 @@ def make_odefun(u_star, UE0):
 c0 = 0.0139
 Usal0 = 2.9279
 # Uair0 = [4.6827, 6.8129, 8.4490, 9.8194, 11.0206, 12.1046]  #h=0.1, u_air_end = 5.4162 m/s for Shields=0.06
-Uair0 = [5.1, 7.4, 9.2, 10.7, 12.0, 13.1] #h=0.2 # Shields=0.01 uair0=5.1
+# Uair0 = [5.1, 7.4, 9.2, 10.7, 12.0, 13.1] #h=0.2 # Shields=0.01 uair0=5.1
+Uair0 = [1.45, 4.47, 5.70, 6.62, 7.40, 8.11] # Uair derived from total drag force
+
+
 #testing parameters
 # CD_air_list = [3e-3, 5e-3, 7e-3, 9e-3] # [3e-4, 5e-4, 7e-4, 1e-3] 
 # CD_drag_reduced_list = [0.2, 0.3, 0.4, 0.5, 1]
