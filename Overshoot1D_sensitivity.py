@@ -17,7 +17,7 @@ from scipy.integrate import quad
 # constants
 D = 0.00025
 constant = np.sqrt(9.81 * D)
-Shields = np.linspace(0.01, 0.06, 6)
+Shields = 0.06 #np.linspace(0.01, 0.06, 6)
 u_star = np.sqrt(Shields * (2650-1.225)*9.81*D/1.225)
 
 # mass of air per unit area
@@ -25,7 +25,7 @@ hsal = 0.2 - 0.00025*10
 mass_air = 1.225 * hsal
 
 # parameters for calibration
-CD_air = 9e-3
+# CD_air = 9e-3
 CD_bed = 3e-4
 
 # numerically solves Uim from Usal
@@ -51,7 +51,7 @@ def Calfd(u_air, u_sal):
     return fd
 
 
-def make_odefun(u_star, C_drag_reduce, C_mass_ero, C_mass_dep, C_mass_im):
+def make_odefun(CD_air, alpha_drag, alpha_ero, alpha_dep, alpha_im):
     def odefun(t, y):
         # air velocity
         u_air = y[2] / mass_air
@@ -109,14 +109,14 @@ def make_odefun(u_star, C_drag_reduce, C_mass_ero, C_mass_dep, C_mass_im):
         fd_sal = Calfd(u_air, u_sal) # the drag force on high-energy saltating particles
         # fd_dep = Calfd(u_air, u_dep*np.cos(theta_dep)) # the drag force on low-energy depositing particles
         mp = 2650 * np.pi/6 * D**3 #particle mass
-        mom_drag = C_drag_reduce * y[0]*fd_sal/mp
+        mom_drag = alpha_drag * y[0]*fd_sal/mp
         # mass is gained through sand erosion, mom is gained through erosion and rebound
-        mass_ero =  C_mass_ero * NE * y[0] 
+        mass_ero =  alpha_ero * NE * y[0] 
         mom_ero = mass_ero * UE * cos_thetaej # MeanUlognorm(UE, 0.7)
-        mass_im = C_mass_im * y[0] * Pr
+        mass_im = alpha_im * y[0] * Pr
         mom_re = mass_im * Ure * cos_thetare # MeanUlognorm(Ure, 0.66)
         # mass is lost through deposition, mom is lost through incident motion
-        mass_dep = C_mass_dep * (1-Pr) * y[0]
+        mass_dep = alpha_dep * (1-Pr) * y[0]
         mom_inc = mass_im * Uim_solution*np.cos(theta_im)/Tim + mass_dep * u_dep*np.cos(theta_dep)/Tdep #  # MeanUlognorm(u_sal, 0.66)
         
         # momentum of air gets replenished slowly through shear at the top boundary
@@ -133,69 +133,184 @@ def make_odefun(u_star, C_drag_reduce, C_mass_ero, C_mass_dep, C_mass_im):
     return odefun
     
 # Initial conditions
-c0 = 0.0139
-Usal0 = 2.9279
+c0 = 0.147 #0.0139
+Usal0 = 0.55 #2.9279
 # Uair0 = [4.6827, 6.8129, 8.4490, 9.8194, 11.0206, 12.1046]  #h=0.1, u_air_end = 5.4162 m/s for Shields=0.06
 # Uair0 = [5.1, 7.4, 9.2, 10.7, 12.0, 13.1] #h=0.2 # Shields=0.01 uair0=5.1
-Uair0 = [1.45, 4.47, 5.70, 6.62, 7.40, 8.11] # Uair derived from total drag force
-
-#testing parameters
-# Fix two of the four parameters at median
-C_mass_ero_fixed = 1
-C_mass_dep_fixed = 1
-
-# Create meshgrid for 2 of 4 parameters
-C_drag_reduce_vals = np.linspace(0.1, 1.0, 10)
-C_mass_im_vals = np.linspace(0.1, 1.0, 10)
-P1, P2 = np.meshgrid(C_drag_reduce_vals, C_mass_im_vals)
+Uair0 = 12.9983
 
 # Time span
-t_span = [0, 20]
-t_eval = np.linspace(t_span[0], t_span[1], 500)
+t_span = [0, 5]
+t_eval = np.linspace(t_span[0], t_span[1], 501)
 
-y_eval_all = []
+data = np.loadtxt('Shields006dry.txt', delimiter=',')
+Q_dpm = data[1:, 0]
+C_dpm = data[1:, 1]
+U_dpm = data[1:, 2]
+t_dpm = np.linspace(0,5,501)
+data_ua_dpm = np.loadtxt('TotalDragForce/Uair_depthave-t.txt', delimiter='\t')
+Ua_dpm = data_ua_dpm[:,1]
 
-    
-q_ss_all = np.zeros((len(u_star), len(C_mass_im_vals), len(C_drag_reduce_vals)))
+# --- Parameter-specific ranges ---
+param_config = {
+    'CD_air': np.linspace(3e-3, 1e-2, 10),
+    'alpha_drag': np.linspace(0.1, 1.0, 50),
+    'alpha_ero':  np.linspace(0.5, 1.5, 50),
+    'alpha_dep':  np.linspace(0.5, 2, 50),
+    'alpha_im':   np.linspace(0.5, 2.5, 50)
+}
 
-for j, us in enumerate(u_star):
-    print(f"Wind {j+1}/{len(u_star)}")
-    for i1, C_drag in enumerate(C_drag_reduce_vals):
-        for i2, C_im in enumerate(C_mass_im_vals):
-            params = {
-                'C_drag_reduce': C_drag,
-                'C_mass_ero': C_mass_ero_fixed,
-                'C_mass_dep': C_mass_dep_fixed,
-                'C_mass_im': C_im
-            }
+# --- To store all results ---
+results = {}
 
-            def make_odefun_param(u_star, params):
-                C_drag_reduce = params['C_drag_reduce']
-                C_mass_ero = params['C_mass_ero']
-                C_mass_dep = params['C_mass_dep']
-                C_mass_im = params['C_mass_im']
-                return make_odefun(u_star, C_drag_reduce, C_mass_ero, C_mass_dep, C_mass_im)
+# --- Loop through each parameter ---
+for param_name, param_range in param_config.items():
+    param_results = {
+        'values': [],
+        'errors': [],
+        'C_all': [],
+        'Usal_all': [],
+        'Q_all': [],
+        'Ua_all': []
+    }
 
-            y0 = [c0, c0*Usal0, Uair0[j]*mass_air]
-            sol = solve_ivp(make_odefun_param(us, params), t_span, y0, method='Radau', dense_output=True)
-            y_eval = sol.sol(t_eval)[1, :]  # cu
-            q_ss = np.mean(y_eval[300:]) # steady-state saltation momentum (cu)
-            q_ss_all[j, i2, i1] = q_ss
-            
-#plot 
-Q_steady_dpm = [0.0047, 0.0137, 0.0188, 0.0257, 0.0398, 0.0392]
+    for val in param_range:
+        # Default values
+        CD_air = 9e-3
+        alpha_drag = 1.0
+        alpha_ero = 1.0
+        alpha_dep = 1.0
+        alpha_im = 1.0
+
+        if param_name == 'CD_air':
+            CD_air = val
+        if param_name == 'alpha_drag':
+            alpha_drag = val
+        elif param_name == 'alpha_ero':
+            alpha_ero = val
+        elif param_name == 'alpha_dep':
+            alpha_dep = val
+        elif param_name == 'alpha_im':
+            alpha_im = val
+
+        # --- Solve the ODE system ---
+        y0 = [c0, c0 * Usal0, Uair0 * mass_air]
+        sol = solve_ivp(
+            make_odefun(CD_air, alpha_drag, alpha_ero, alpha_dep, alpha_im),
+            t_span, y0, method='Radau', dense_output=True
+        )
+        y_eval = sol.sol(t_eval)
+
+        C = y_eval[0, :]
+        Usal = y_eval[1, :] / (y_eval[0, :] + 1e-9)
+        Ua = y_eval[2, :] / mass_air
+        Q = y_eval[1, :]
+
+        # --- Compute average relative error ---
+        error = abs(C - C_dpm) / C_dpm + abs(Usal - U_dpm) / U_dpm + abs(Ua - Ua_dpm) / Ua_dpm
+        error_mean = np.mean(error)
+
+        # --- Store all outputs ---
+        param_results['values'].append(val)
+        param_results['errors'].append(error_mean)
+        param_results['C_all'].append(C)
+        param_results['Usal_all'].append(Usal)
+        param_results['Q_all'].append(Q)
+        param_results['Ua_all'].append(Ua)
+
+    results[param_name] = param_results
+
 
 plt.close('all')
-fig, axes = plt.subplots(2, 3, figsize=(15, 8))
-for i, ax in enumerate(axes.flatten()):
-    im = ax.contourf(P1, P2, q_ss_all[i] - Q_steady_dpm[i], levels=20, cmap='viridis')
-    ax.set_title(f"$\Theta$ = {Shields[i]:.2f}")
-    ax.set_xlabel("C_drag_reduce")
-    ax.set_ylabel("C_mass_im")
-    cb = fig.colorbar(im, ax=ax)
-    cb.set_label(r"$\Delta Q_s$ [kg/m/s]")
-plt.tight_layout()
+plt.figure(figsize=(12, 8))
+for i, (param_name, data) in enumerate(results.items()):
+    plt.subplot(2, 3, i + 1)
+    plt.plot(data['values'], data['errors'], 'o-')
+    plt.xlabel(f'{param_name}', fontsize=14)
+    plt.ylabel(r"<Error>")
+    plt.tight_layout()
 plt.show()
+
+
+best_params = {}
+
+for param_name, data in results.items():
+    min_idx = np.argmin(data["errors"])  # Index of the minimum error
+    best_value = data["values"][min_idx]
+    min_error = data["errors"][min_idx]
+    best_params[param_name] = {"value": best_value, "error": min_error}
+
+# Plotting C, Usal, Q, Ua over time for best parameters
+for param_name, result in best_params.items():
+    min_idx = np.argmin(results[param_name]["errors"])
+    t = t_eval  # already defined earlier
+
+    C_best = results[param_name]["C_all"][min_idx]
+    Usal_best = results[param_name]["Usal_all"][min_idx]
+    Q_best = results[param_name]["Q_all"][min_idx]
+    Ua_best = results[param_name]["Ua_all"][min_idx]
+
+    fig, axs = plt.subplots(2, 2, figsize=(8, 6), sharex=True)
+    fig.suptitle(f"Time evolution for best {param_name} = {result['value']:.3f}")
+
+    axs[0,0].plot(t, Q_dpm, color='k', label='DPM')
+    axs[0,0].plot(t, Q_best, label="Continuum", color="tab:blue")
+    axs[0,0].set_ylabel("Q [kg/m/s]")
+    axs[0,0].legend()
+    
+    axs[0,1].plot(t, C_dpm, color='k', label='DPM simulation')
+    axs[0,1].plot(t, C_best, label="C", color="tab:blue")
+    axs[0,1].set_ylabel("C")
+
+    axs[1,0].plot(t, U_dpm, color='k')
+    axs[1,0].plot(t, Usal_best, label="Usal", color="tab:blue")
+    axs[1,0].set_ylabel("Usal [m/s]")
+    
+    axs[1,1].plot(t, Ua_dpm, color='k')
+    axs[1,1].plot(t, Ua_best, label="Ua", color="tab:blue")
+    axs[1,1].set_xlabel("Time [s]")
+    axs[1,1].set_ylabel("Ua [m/s]")
+
+    plt.tight_layout()  # leave space for suptitle
+    plt.show()
+
+
+
+
+# keys_dpm = [Q_dpm, C_dpm, U_dpm, Ua_dpm]
+# keys_continuum = [Q_all[18], C_all[18], Usal_all[18], Ua_all[18]]
+# ylabels = ['Q [kg/m/s]', 'C [kg/m^2]', 'U_sal [m/s]', 'U_air [m/s]']
+# fig, axs = plt.subplots(2, 2, figsize=(10, 10))
+# axs = axs.flatten()
+# # Plot in a loop
+# for i, ax in enumerate(axs):
+#     ax.plot(t_dpm, keys_dpm[i], color='k', label='DPM simulation')
+#     ax.plot(t_eval, keys_continuum[i], label='Continuum')
+#     ax.set_xlabel('Time [s]')
+#     ax.set_ylabel(ylabels[i])
+#     ax.set_xlim(left=0)
+#     ax.set_ylim(bottom=0)
+#     ax.grid(True)
+#     if i == 0:
+#         ax.legend()
+# fig.suptitle(fr'$\Theta$=0.06, CD_air={CD_air}, $\alpha_{{drag}}$={alpha_drag_vals[18]:.2f}')
+# plt.tight_layout()
+# plt.show()
+
+#plot 
+# Q_steady_dpm = [0.0047, 0.0137, 0.0188, 0.0257, 0.0398, 0.0392]
+
+# plt.close('all')
+# fig, axes = plt.subplots(2, 3, figsize=(15, 8))
+# for i, ax in enumerate(axes.flatten()):
+#     im = ax.contourf(P1, P2, q_ss_all[i] - Q_steady_dpm[i], levels=20, cmap='viridis')
+#     ax.set_title(f"$\Theta$ = {Shields[i]:.2f}")
+#     ax.set_xlabel("C_drag_reduce")
+#     ax.set_ylabel("C_mass_im")
+#     cb = fig.colorbar(im, ax=ax)
+#     cb.set_label(r"$\Delta Q_s$ [kg/m/s]")
+# plt.tight_layout()
+# plt.show()
           
  
 
