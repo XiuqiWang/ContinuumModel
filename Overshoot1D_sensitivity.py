@@ -27,10 +27,6 @@ mass_air = 1.225 * hsal
 # parameters for calibration
 CD_air = 9e-3
 CD_bed = 3e-4
-C_drag_reduce = 1
-C_mass_ero = 1
-C_mass_dep = 1
-C_mass_im = 1
 
 # numerically solves Uim from Usal
 def solveUim(Uim, u_sal):
@@ -54,62 +50,8 @@ def Calfd(u_air, u_sal):
     fd = 0.5* np.pi/8 * 1.225 * D**2 * C_D * (u_air - u_sal)* abs(u_air - u_sal)
     return fd
 
-def MeanPr(Uim_mu, Uim_sigma):
-    # Create lognormal distribution (Uim > 0)
-    # The 'scale' parameter is exp(mu) for lognorm in scipy
-    log_mu = np.log(Uim_mu) - Uim_sigma**2*0.5
-    dist = lognorm(s=Uim_sigma, scale=np.exp(log_mu))
-    # lower, upper = 0, np.inf
-    # a, b = (lower - Uim_mu) / Uim_sigma, (upper - Uim_mu) / Uim_sigma
-    # # Create truncated normal distribution
-    # dist = truncnorm(a, b, loc=Uim_mu, scale=Uim_sigma) 
-    # --- Rebound probability function ---
-    def Pr(Uim):
-        return 0.94 * np.exp(-7.11 * np.exp(-0.11 * Uim / constant))
-    # --- Integrand: p(Uim) * Pr(Uim) ---
-    def integrand_Pr(Uim):
-        return dist.pdf(Uim) * Pr(Uim)   
-    Pr_bar, error_Pr = quad(integrand_Pr, 0, np.inf)
-    # thetare_bar, error_thetare = quad(integrand_thetare, 0, np.inf)
-    return Pr_bar
 
-# Uim = np.linspace(0, 8, 100)
-# Pr = 0.94 * np.exp(-7.11 * np.exp(-0.11 * Uim / constant))
-# Pr_bar = [MeanPr(uim, 0.8) for uim in Uim]
-
-# plt.figure()
-# plt.plot(Uim, Pr, label='individual')
-# plt.plot(Uim, Pr_bar, label='mean')
-# plt.xlabel('Uim')
-# plt.ylabel('Pr')
-# plt.legend()
-
-def MeanUlognorm(U, U_sigma, plot_pdf=True):
-    U_mu = np.log(U) - U_sigma**2*0.5
-    # print('U_mu:', U_mu)
-    dist = lognorm(s=U_sigma, scale=np.exp(U_mu))
-    def integrand(U):
-        return U * dist.pdf(U)
-    U_mean, _ = quad(integrand, 0, np.inf)
-    
-    # Plot PDF if requested
-    if plot_pdf:
-        x_vals = np.linspace(0.01, U + 4 * U, 1000)
-        pdf_vals = dist.pdf(x_vals)
-        plt.figure(figsize=(7, 4))
-        plt.plot(x_vals, pdf_vals, label='Lognormal PDF')
-        plt.axvline(U_mean, color='red', linestyle='--', label=f'Mean = {U_mean:.2f}')
-        plt.xlabel('U')
-        plt.ylabel('PDF')
-        plt.title('PDF of U (Lognormal Distribution)')
-        plt.legend()
-        plt.grid(True)
-        plt.tight_layout()
-        plt.show()
-    
-    return U_mean
-
-def make_odefun(u_star, UE0):
+def make_odefun(u_star, C_drag_reduce, C_mass_ero, C_mass_dep, C_mass_im):
     def odefun(t, y):
         # air velocity
         u_air = y[2] / mass_air
@@ -169,12 +111,12 @@ def make_odefun(u_star, UE0):
         mp = 2650 * np.pi/6 * D**3 #particle mass
         mom_drag = C_drag_reduce * y[0]*fd_sal/mp
         # mass is gained through sand erosion, mom is gained through erosion and rebound
-        mass_ero =  NE * y[0] 
+        mass_ero =  C_mass_ero * NE * y[0] 
         mom_ero = mass_ero * UE * cos_thetaej # MeanUlognorm(UE, 0.7)
-        mass_im = y[0] * Pr
+        mass_im = C_mass_im * y[0] * Pr
         mom_re = mass_im * Ure * cos_thetare # MeanUlognorm(Ure, 0.66)
         # mass is lost through deposition, mom is lost through incident motion
-        mass_dep = (1-Pr) * y[0]
+        mass_dep = C_mass_dep * (1-Pr) * y[0]
         mom_inc = mass_im * Uim_solution*np.cos(theta_im)/Tim + mass_dep * u_dep*np.cos(theta_dep)/Tdep #  # MeanUlognorm(u_sal, 0.66)
         
         # momentum of air gets replenished slowly through shear at the top boundary
@@ -197,32 +139,15 @@ Usal0 = 2.9279
 # Uair0 = [5.1, 7.4, 9.2, 10.7, 12.0, 13.1] #h=0.2 # Shields=0.01 uair0=5.1
 Uair0 = [1.45, 4.47, 5.70, 6.62, 7.40, 8.11] # Uair derived from total drag force
 
-
 #testing parameters
-# CD_air_list = [3e-3, 5e-3, 7e-3, 9e-3] # [3e-4, 5e-4, 7e-4, 1e-3] 
-# CD_drag_reduced_list = [0.2, 0.3, 0.4, 0.5, 1]
-# CD_bed_list = [3e-7, 3e-6, 3e-5, 3e-4] # [3e-7, 3e-6, 3e-5, 3e-4, 3e-3]
-# COR_list = [0.3, 0.5, 0.7, 0.9]
-# N0_list = [0.04, 0.06, 0.08, 0.10]
-UE0_list = [3, 4, 5, 6]
+# Fix two of the four parameters at median
+C_mass_ero_fixed = 1
+C_mass_dep_fixed = 1
 
-# COR0_list = [5.1,5.2,5.3]
-# COR_beta_list = [0.59, 0.6, 0.61]
-# Pr_A_list = [0.94, 0.98, 1]
-# Pr_B_list = [6, 7, 8]
-# Pr_C_list = [0.1, 0.11, 0.12]
-# Udep_frac_list = [0.17, 0.18, 0.19]
-# theta_re_A_list = [0.0005, 0.0006, 0.0007]
-# theta_re_B_list = [0.6, 0.65, 0.7]
-# theta_E_list = [45, 47, 50]
-# theta_D_list = np.array([20, 25, 30])
-
-# Pr_list = [1, 2, 3]
-# Pr_name_list = ['original', 'mean', 'COMSALT']
-# theta_re_list = [30, 40, 50, 60]
-# theta_E_list = [30, 40, 50]
-# UD_fraction _list = [0.15, 0.18, 0.2]
-colors = ['b', 'g', 'r', 'm', 'y']
+# Create meshgrid for 2 of 4 parameters
+C_drag_reduce_vals = np.linspace(0.1, 1.0, 10)
+C_mass_im_vals = np.linspace(0.1, 1.0, 10)
+P1, P2 = np.meshgrid(C_drag_reduce_vals, C_mass_im_vals)
 
 # Time span
 t_span = [0, 20]
@@ -230,93 +155,178 @@ t_eval = np.linspace(t_span[0], t_span[1], 500)
 
 y_eval_all = []
 
-for idx, a in enumerate(UE0_list):
-    y_eval = []
-    for i in range(len(Uair0)):
-        y0 = [c0, c0*Usal0, Uair0[i]*mass_air] #mass sal, momentum sal, momentum air
-        odefun = make_odefun(u_star[i], a)
-        sol = solve_ivp(odefun, t_span, y0, method='Radau', dense_output=True)
-        y_eval.append(sol.sol(t_eval))
-    y_eval_all.append(y_eval)
     
-# y0 = [c0, c0*Usal0, Uair0[-3]*mass_air] #mass sal, momentum sal, momentum air
-# odefun = make_odefun(u_star[-3])
-# sol = solve_ivp(odefun, t_span, y0, method='Radau', dense_output=True)
-# y_eval.append(sol.sol(t_eval))
+q_ss_all = np.zeros((len(u_star), len(C_mass_im_vals), len(C_drag_reduce_vals)))
 
-#calibrate splash functions with DPM data
-# Read the data at Shields=0.06
-data = np.loadtxt('Shields006.txt', delimiter=',')
-Q_dpm = data[:, 0]
-C_dpm = data[:, 1]
-U_dpm = data[:, 2]
-t_dpm = np.linspace(0,5,502)
-data_ua = np.loadtxt('Uair_ave-t.txt', delimiter='\t')
-Ua_dpm = np.insert(data_ua[:, 1], 0, Uair0[-1])
+for j, us in enumerate(u_star):
+    print(f"Wind {j+1}/{len(u_star)}")
+    for i1, C_drag in enumerate(C_drag_reduce_vals):
+        for i2, C_im in enumerate(C_mass_im_vals):
+            params = {
+                'C_drag_reduce': C_drag,
+                'C_mass_ero': C_mass_ero_fixed,
+                'C_mass_dep': C_mass_dep_fixed,
+                'C_mass_im': C_im
+            }
+
+            def make_odefun_param(u_star, params):
+                C_drag_reduce = params['C_drag_reduce']
+                C_mass_ero = params['C_mass_ero']
+                C_mass_dep = params['C_mass_dep']
+                C_mass_im = params['C_mass_im']
+                return make_odefun(u_star, C_drag_reduce, C_mass_ero, C_mass_dep, C_mass_im)
+
+            y0 = [c0, c0*Usal0, Uair0[j]*mass_air]
+            sol = solve_ivp(make_odefun_param(us, params), t_span, y0, method='Radau', dense_output=True)
+            y_eval = sol.sol(t_eval)[1, :]  # cu
+            q_ss = np.mean(y_eval[300:]) # steady-state saltation momentum (cu)
+            q_ss_all[j, i2, i1] = q_ss
+            
+#plot 
+Q_steady_dpm = [0.0047, 0.0137, 0.0188, 0.0257, 0.0398, 0.0392]
 
 plt.close('all')
-# Define the labels and keys once for reuse
-ylabels = ['Q [kg/m/s]', 'C [kg/m^2]', 'U_sal [m/s]', 'U_air [m/s]']
-keys_dpm = [Q_dpm, C_dpm, U_dpm, Ua_dpm]
-keys_continuum = []
-for i in range(len(UE0_list)):
-    keys_continuum.append([y_eval_all[i][-1][1],y_eval_all[i][-1][0],y_eval_all[i][-1][1] / (y_eval_all[i][-1][0] + 1e-9), y_eval_all[i][-1][2]/mass_air]) #Q, C, U, Ua
-fig, axs = plt.subplots(2, 2, figsize=(10, 10))
-axs = axs.flatten()
-# Plot in a loop
-for i, ax in enumerate(axs):
-    ax.plot(t_dpm, keys_dpm[i], color='k', label='DPM simulation')
-    for j in range(len(UE0_list)):
-        ax.plot(t_eval, keys_continuum[j][i], label=fr'Continuum $UE_{{0}}$=${UE0_list[j]}$')
-    ax.set_xlabel('Time [s]')
-    ax.set_ylabel(ylabels[i])
-    ax.set_xlim(left=0)
-    ax.set_ylim(bottom=0)
-    ax.grid(True)
-    if i == 0:
-        ax.legend()
-fig.suptitle(r'$\Theta$=0.06, CD_air={CD_air}, CD_drag_reduced={CD_drag_reduce}')
+fig, axes = plt.subplots(2, 3, figsize=(15, 8))
+for i, ax in enumerate(axes.flatten()):
+    im = ax.contourf(P1, P2, q_ss_all[i] - Q_steady_dpm[i], levels=20, cmap='viridis')
+    ax.set_title(f"$\Theta$ = {Shields[i]:.2f}")
+    ax.set_xlabel("C_drag_reduce")
+    ax.set_ylabel("C_mass_im")
+    cb = fig.colorbar(im, ax=ax)
+    cb.set_label(r"$\Delta Q_s$ [kg/m/s]")
 plt.tight_layout()
 plt.show()
+          
+ 
 
-# plt.figure()
-# for i in range(len(u_star)):
-#     plt.plot(t_eval, y_eval_all[-1][i][1], label=f"$\Theta$=0.0{i+2}")
-# plt.legend()
-# plt.xlabel('Time [s]')
-# plt.xlim(left=0)
-# plt.ylabel(r'$Q$ [kg/m/s]')
-# plt.ylim(bottom=0)
-# plt.xlim(left=0)
-# plt.title('CD_air = 5e-3')
+# #calibrate splash functions with DPM data
+# # Read the data at Shields=0.06
+# data = np.loadtxt('Shields006.txt', delimiter=',')
+# Q_dpm = data[:, 0]
+# C_dpm = data[:, 1]
+# U_dpm = data[:, 2]
+# t_dpm = np.linspace(0,5,502)
+# data_ua = np.loadtxt('Uair_ave-t.txt', delimiter='\t')
+# Ua_dpm = np.insert(data_ua[:, 1], 0, Uair0[-1])
+
+# plt.close('all')
+# # Define the labels and keys once for reuse
+# ylabels = ['Q [kg/m/s]', 'C [kg/m^2]', 'U_sal [m/s]', 'U_air [m/s]']
+# keys_dpm = [Q_dpm, C_dpm, U_dpm, Ua_dpm]
+# keys_continuum = []
+# for i in range(len(UE0_list)):
+#     keys_continuum.append([y_eval_all[i][-1][1],y_eval_all[i][-1][0],y_eval_all[i][-1][1] / (y_eval_all[i][-1][0] + 1e-9), y_eval_all[i][-1][2]/mass_air]) #Q, C, U, Ua
+# fig, axs = plt.subplots(2, 2, figsize=(10, 10))
+# axs = axs.flatten()
+# # Plot in a loop
+# for i, ax in enumerate(axs):
+#     ax.plot(t_dpm, keys_dpm[i], color='k', label='DPM simulation')
+#     for j in range(len(UE0_list)):
+#         ax.plot(t_eval, keys_continuum[j][i], label=fr'Continuum $UE_{{0}}$=${UE0_list[j]}$')
+#     ax.set_xlabel('Time [s]')
+#     ax.set_ylabel(ylabels[i])
+#     ax.set_xlim(left=0)
+#     ax.set_ylim(bottom=0)
+#     ax.grid(True)
+#     if i == 0:
+#         ax.legend()
+# fig.suptitle(r'$\Theta$=0.06, CD_air={CD_air}, CD_drag_reduced={CD_drag_reduce}')
 # plt.tight_layout()
 # plt.show()
 
-#calculate steady Q
-Q_steady_dpm = [0.0047, 0.0137, 0.0188, 0.0257, 0.0398, 0.0392] #dpm Shields=0.01 Qs=0.0047
-Q_steady_all = []
+# # plt.figure()
+# # for i in range(len(u_star)):
+# #     plt.plot(t_eval, y_eval_all[-1][i][1], label=f"$\Theta$=0.0{i+2}")
+# # plt.legend()
+# # plt.xlabel('Time [s]')
+# # plt.xlim(left=0)
+# # plt.ylabel(r'$Q$ [kg/m/s]')
+# # plt.ylim(bottom=0)
+# # plt.xlim(left=0)
+# # plt.title('CD_air = 5e-3')
+# # plt.tight_layout()
+# # plt.show()
 
-for idx, a in enumerate(UE0_list):
-    Q_steady = np.zeros(len(u_star))
-    for i in range(len(u_star)):
-        Qs = np.mean(y_eval_all[idx][i][1][300:])
-        Q_steady[i] = Qs
-    Q_steady_all.append(Q_steady)
+# #calculate steady Q
+# Q_steady_dpm = [0.0047, 0.0137, 0.0188, 0.0257, 0.0398, 0.0392] #dpm Shields=0.01 Qs=0.0047
+# Q_steady_all = []
 
-plt.figure()
-plt.plot(Shields, Q_steady_dpm, 'ok', label='DPM simulation')
-for idx, Q_steady in enumerate(Q_steady_all):
-    label = f'$UE_{{0}}$ = {UE0_list[idx]}'
-    plt.plot(Shields, Q_steady, 'x', color=colors[idx], label=label)
-plt.xlabel(r'$\Theta$')
-plt.ylabel(r'$Q_\mathrm{steady}$ [kg/m/s]')
-plt.xlim(left=0)
-plt.ylim(bottom=0)
-plt.legend()
-plt.title(fr'$\Theta$=0.06, CD_air={CD_air}, CD_drag_reduced={CD_drag_reduce}')
-plt.tight_layout()
-plt.show()
-        
+# for idx, a in enumerate(UE0_list):
+#     Q_steady = np.zeros(len(u_star))
+#     for i in range(len(u_star)):
+#         Qs = np.mean(y_eval_all[idx][i][1][300:])
+#         Q_steady[i] = Qs
+#     Q_steady_all.append(Q_steady)
+
+# plt.figure()
+# plt.plot(Shields, Q_steady_dpm, 'ok', label='DPM simulation')
+# for idx, Q_steady in enumerate(Q_steady_all):
+#     label = f'$UE_{{0}}$ = {UE0_list[idx]}'
+#     plt.plot(Shields, Q_steady, 'x', color=colors[idx], label=label)
+# plt.xlabel(r'$\Theta$')
+# plt.ylabel(r'$Q_\mathrm{steady}$ [kg/m/s]')
+# plt.xlim(left=0)
+# plt.ylim(bottom=0)
+# plt.legend()
+# plt.title(fr'$\Theta$=0.06, CD_air={CD_air}, CD_drag_reduced={CD_drag_reduce}')
+# plt.tight_layout()
+# plt.show()
+    
+
+# def MeanPr(Uim_mu, Uim_sigma):
+#     # Create lognormal distribution (Uim > 0)
+#     # The 'scale' parameter is exp(mu) for lognorm in scipy
+#     log_mu = np.log(Uim_mu) - Uim_sigma**2*0.5
+#     dist = lognorm(s=Uim_sigma, scale=np.exp(log_mu))
+#     # lower, upper = 0, np.inf
+#     # a, b = (lower - Uim_mu) / Uim_sigma, (upper - Uim_mu) / Uim_sigma
+#     # # Create truncated normal distribution
+#     # dist = truncnorm(a, b, loc=Uim_mu, scale=Uim_sigma) 
+#     # --- Rebound probability function ---
+#     def Pr(Uim):
+#         return 0.94 * np.exp(-7.11 * np.exp(-0.11 * Uim / constant))
+#     # --- Integrand: p(Uim) * Pr(Uim) ---
+#     def integrand_Pr(Uim):
+#         return dist.pdf(Uim) * Pr(Uim)   
+#     Pr_bar, error_Pr = quad(integrand_Pr, 0, np.inf)
+#     # thetare_bar, error_thetare = quad(integrand_thetare, 0, np.inf)
+#     return Pr_bar
+
+# Uim = np.linspace(0, 8, 100)
+# Pr = 0.94 * np.exp(-7.11 * np.exp(-0.11 * Uim / constant))
+# Pr_bar = [MeanPr(uim, 0.8) for uim in Uim]
+
+# plt.figure()
+# plt.plot(Uim, Pr, label='individual')
+# plt.plot(Uim, Pr_bar, label='mean')
+# plt.xlabel('Uim')
+# plt.ylabel('Pr')
+# plt.legend()
+
+# def MeanUlognorm(U, U_sigma, plot_pdf=True):
+#     U_mu = np.log(U) - U_sigma**2*0.5
+#     # print('U_mu:', U_mu)
+#     dist = lognorm(s=U_sigma, scale=np.exp(U_mu))
+#     def integrand(U):
+#         return U * dist.pdf(U)
+#     U_mean, _ = quad(integrand, 0, np.inf)
+    
+#     # Plot PDF if requested
+#     if plot_pdf:
+#         x_vals = np.linspace(0.01, U + 4 * U, 1000)
+#         pdf_vals = dist.pdf(x_vals)
+#         plt.figure(figsize=(7, 4))
+#         plt.plot(x_vals, pdf_vals, label='Lognormal PDF')
+#         plt.axvline(U_mean, color='red', linestyle='--', label=f'Mean = {U_mean:.2f}')
+#         plt.xlabel('U')
+#         plt.ylabel('PDF')
+#         plt.title('PDF of U (Lognormal Distribution)')
+#         plt.legend()
+#         plt.grid(True)
+#         plt.tight_layout()
+#         plt.show()
+    
+#     return U_mean    
 
 # def MeanUElognorm(mu, sigma, plot_pdf=True):
 #     dist = lognorm(s=sigma, scale=np.exp(mu))
