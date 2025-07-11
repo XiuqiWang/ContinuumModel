@@ -13,6 +13,7 @@ from scipy.stats import lognorm
 from scipy.stats import truncnorm
 from scipy.stats import expon
 from scipy.integrate import quad
+from scipy.interpolate import interp1d
 
 # constants
 D = 0.00025
@@ -21,8 +22,8 @@ Shields = 0.06 #np.linspace(0.01, 0.06, 6)
 u_star = np.sqrt(Shields * (2650-1.225)*9.81*D/1.225)
 
 # mass of air per unit area
-hsal = 0.2 - 0.00025*10
-mass_air = 1.225 * hsal
+# hsal = 0.2 - 0.00025*10
+# mass_air = 1.225 * hsal
 
 # parameters for calibration
 # CD_air = 9e-3
@@ -53,10 +54,14 @@ def Calfd(u_air, u_sal):
 
 def make_odefun(CD_air, alpha_drag, alpha_ero, alpha_dep, alpha_im):
     def odefun(t, y):
-        # air velocity
-        u_air = y[2] / mass_air
-        # saltating layer velocity
+        #saltation velocity
         u_sal = y[1] / (y[0] + 1e-9)
+        #saltation layer height
+        hsal = u_sal**2/9.81 - 0.0025
+        #air mass
+        mass_air = 1.225 * hsal
+        #air velocity
+        u_air = y[2] / mass_air
         # print('Ua', y[2]/mass_air)
         # print('C:',y[0])
         # print('CU', y[1])
@@ -120,7 +125,7 @@ def make_odefun(CD_air, alpha_drag, alpha_ero, alpha_dep, alpha_im):
         mom_inc = mass_im * Uim_solution*np.cos(theta_im)/Tim + mass_dep * u_dep*np.cos(theta_dep)/Tdep #  # MeanUlognorm(u_sal, 0.66)
         
         # momentum of air gets replenished slowly through shear at the top boundary
-        u_am = u_star/0.4 * np.log((hsal-0.00025*10)/(0.00025/30)) #law of the wall (COMSALT)
+        u_am = u_star/0.4 * np.log((hsal)/(0.00025/30)) #law of the wall (COMSALT)
         mom_air_gain =  0.5* CD_air * 1.225 * (u_am - u_air) *abs(u_am - u_air) # 1.225 * u_star **2
         # momentum of air gets lost slowly from bed shear
         mom_air_loss = 0.5* 1.225 * CD_bed * u_air * abs(u_air) 
@@ -137,7 +142,8 @@ c0 = 0.147 #0.0139
 Usal0 = 0.55 #2.9279
 # Uair0 = [4.6827, 6.8129, 8.4490, 9.8194, 11.0206, 12.1046]  #h=0.1, u_air_end = 5.4162 m/s for Shields=0.06
 # Uair0 = [5.1, 7.4, 9.2, 10.7, 12.0, 13.1] #h=0.2 # Shields=0.01 uair0=5.1
-Uair0 = 12.9983
+Uair0 = 12.9983 #11.55 #9.9
+mass_air_ini = (0.012-0.0025)*1.225
 
 # Time span
 t_span = [0, 5]
@@ -148,13 +154,14 @@ Q_dpm = data[1:, 0]
 C_dpm = data[1:, 1]
 U_dpm = data[1:, 2]
 t_dpm = np.linspace(0,5,501)
-data_ua_dpm = np.loadtxt('TotalDragForce/Uair_depthave-t.txt', delimiter='\t')
+data_ua_dpm = np.loadtxt('TotalDragForce/Uair_ave-tS006Dryh02.txt', delimiter='\t')
 Ua_dpm = data_ua_dpm[:,1]
+hsal_dpm = np.loadtxt("Hsal-t-S006Dry.txt") - 0.0025
 
 # --- Parameter-specific ranges ---
 param_config = {
     'CD_air': np.linspace(3e-3, 1e-2, 10),
-    'alpha_drag': np.linspace(0.1, 1.0, 50),
+    'alpha_drag': np.linspace(0.1, 1, 50),
     'alpha_ero':  np.linspace(0.5, 1.5, 50),
     'alpha_dep':  np.linspace(0.5, 2, 50),
     'alpha_im':   np.linspace(0.5, 2.5, 50)
@@ -176,7 +183,7 @@ for param_name, param_range in param_config.items():
 
     for val in param_range:
         # Default values
-        CD_air = 9e-3
+        CD_air = 8e-3
         alpha_drag = 1.0
         alpha_ero = 1.0
         alpha_dep = 1.0
@@ -194,7 +201,7 @@ for param_name, param_range in param_config.items():
             alpha_im = val
 
         # --- Solve the ODE system ---
-        y0 = [c0, c0 * Usal0, Uair0 * mass_air]
+        y0 = [c0, c0 * Usal0, Uair0 * mass_air_ini]
         sol = solve_ivp(
             make_odefun(CD_air, alpha_drag, alpha_ero, alpha_dep, alpha_im),
             t_span, y0, method='Radau', dense_output=True
@@ -203,7 +210,9 @@ for param_name, param_range in param_config.items():
 
         C = y_eval[0, :]
         Usal = y_eval[1, :] / (y_eval[0, :] + 1e-9)
-        Ua = y_eval[2, :] / mass_air
+        hsal = Usal * 0.1 - 0.0025
+        mass_air_t = 1.225*(hsal)
+        Ua = y_eval[2, :] / mass_air_t
         Q = y_eval[1, :]
 
         # --- Compute average relative error ---
@@ -220,7 +229,7 @@ for param_name, param_range in param_config.items():
 
     results[param_name] = param_results
 
-
+param_names = ['CD_{air}','alpha_{drag}','alpha_{ero}', 'alpha_{dep}', 'alpha_{im}']
 plt.close('all')
 plt.figure(figsize=(12, 8))
 for i, (param_name, data) in enumerate(results.items()):
@@ -256,20 +265,32 @@ for param_name, result in best_params.items():
     axs[0,0].plot(t, Q_dpm, color='k', label='DPM')
     axs[0,0].plot(t, Q_best, label="Continuum", color="tab:blue")
     axs[0,0].set_ylabel("Q [kg/m/s]")
+    axs[0,0].set_ylim(bottom=0)
+    axs[0,0].set_xlim(left=0)
     axs[0,0].legend()
+    axs[0, 0].grid(True)
     
     axs[0,1].plot(t, C_dpm, color='k', label='DPM simulation')
     axs[0,1].plot(t, C_best, label="C", color="tab:blue")
-    axs[0,1].set_ylabel("C")
+    axs[0,1].set_ylabel("C [kg/m^2]")
+    axs[0,1].set_ylim(bottom=0)
+    axs[0,1].set_xlim(left=0)
+    axs[0, 1].grid(True)
 
     axs[1,0].plot(t, U_dpm, color='k')
     axs[1,0].plot(t, Usal_best, label="Usal", color="tab:blue")
     axs[1,0].set_ylabel("Usal [m/s]")
+    axs[1,0].set_ylim(bottom=0)
+    axs[1,0].set_xlim(left=0)
+    axs[1, 0].grid(True)
     
     axs[1,1].plot(t, Ua_dpm, color='k')
     axs[1,1].plot(t, Ua_best, label="Ua", color="tab:blue")
     axs[1,1].set_xlabel("Time [s]")
     axs[1,1].set_ylabel("Ua [m/s]")
+    axs[1,1].set_ylim(bottom=0)
+    axs[1,1].set_xlim(left=0)
+    axs[1, 1].grid(True)
 
     plt.tight_layout()  # leave space for suptitle
     plt.show()
