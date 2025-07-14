@@ -52,12 +52,10 @@ def Calfd(u_air, u_sal):
     return fd
 
 
-def make_odefun(CD_air, alpha_drag, alpha_ero, alpha_dep, alpha_im):
+def make_odefun(CD_air, alpha_drag, alpha_ero, alpha_dep, alpha_im, hsal):
     def odefun(t, y):
         #saltation velocity
         u_sal = y[1] / (y[0] + 1e-9)
-        #saltation layer height
-        hsal = u_sal**2/9.81 - 0.0025
         #air mass
         mass_air = 1.225 * hsal
         #air velocity
@@ -142,8 +140,8 @@ c0 = 0.147 #0.0139
 Usal0 = 0.55 #2.9279
 # Uair0 = [4.6827, 6.8129, 8.4490, 9.8194, 11.0206, 12.1046]  #h=0.1, u_air_end = 5.4162 m/s for Shields=0.06
 # Uair0 = [5.1, 7.4, 9.2, 10.7, 12.0, 13.1] #h=0.2 # Shields=0.01 uair0=5.1
-Uair0 = 12.9983 #11.55 #9.9
-mass_air_ini = (0.012-0.0025)*1.225
+# Uair0 = 12.9983 #11.55 #9.9
+# mass_air_ini = (0.2-0.0025)*1.225
 
 # Time span
 t_span = [0, 5]
@@ -154,7 +152,7 @@ Q_dpm = data[1:, 0]
 C_dpm = data[1:, 1]
 U_dpm = data[1:, 2]
 t_dpm = np.linspace(0,5,501)
-data_ua_dpm = np.loadtxt('TotalDragForce/Uair_ave-tS006Dryh02.txt', delimiter='\t')
+data_ua_dpm = np.loadtxt('TotalDragForce/Uair_ave-tS006Dryh01.txt', delimiter='\t')
 Ua_dpm = data_ua_dpm[:,1]
 hsal_dpm = np.loadtxt("Hsal-t-S006Dry.txt") - 0.0025
 
@@ -164,7 +162,8 @@ param_config = {
     'alpha_drag': np.linspace(0.1, 1, 50),
     'alpha_ero':  np.linspace(0.5, 1.5, 50),
     'alpha_dep':  np.linspace(0.5, 2, 50),
-    'alpha_im':   np.linspace(0.5, 2.5, 50)
+    'alpha_im':   np.linspace(0.5, 2.5, 50),
+    'hsal':       np.linspace(0.01, 0.2, 10)-0.0025
 }
 
 # --- To store all results ---
@@ -188,6 +187,7 @@ for param_name, param_range in param_config.items():
         alpha_ero = 1.0
         alpha_dep = 1.0
         alpha_im = 1.0
+        hsal = 0.1
 
         if param_name == 'CD_air':
             CD_air = val
@@ -199,24 +199,26 @@ for param_name, param_range in param_config.items():
             alpha_dep = val
         elif param_name == 'alpha_im':
             alpha_im = val
+        elif param_name == 'hsal':
+            hsal = val
 
         # --- Solve the ODE system ---
-        y0 = [c0, c0 * Usal0, Uair0 * mass_air_ini]
+        Uair0 = (hsal+0.0025)*16.4 + 9.71 #linear estimation
+        mass_air = 1.225 * hsal
+        y0 = [c0, c0 * Usal0, Uair0 * mass_air]
         sol = solve_ivp(
-            make_odefun(CD_air, alpha_drag, alpha_ero, alpha_dep, alpha_im),
+            make_odefun(CD_air, alpha_drag, alpha_ero, alpha_dep, alpha_im, hsal),
             t_span, y0, method='Radau', dense_output=True
         )
         y_eval = sol.sol(t_eval)
 
         C = y_eval[0, :]
         Usal = y_eval[1, :] / (y_eval[0, :] + 1e-9)
-        hsal = Usal * 0.1 - 0.0025
-        mass_air_t = 1.225*(hsal)
-        Ua = y_eval[2, :] / mass_air_t
+        Ua = y_eval[2, :] / mass_air
         Q = y_eval[1, :]
 
         # --- Compute average relative error ---
-        error = abs(C - C_dpm) / C_dpm + abs(Usal - U_dpm) / U_dpm + abs(Ua - Ua_dpm) / Ua_dpm
+        error = abs(C - C_dpm) / C_dpm + abs(Usal - U_dpm) / U_dpm #+ abs(Ua - Ua_dpm) / Ua_dpm
         error_mean = np.mean(error)
 
         # --- Store all outputs ---
@@ -229,7 +231,7 @@ for param_name, param_range in param_config.items():
 
     results[param_name] = param_results
 
-param_names = ['CD_{air}','alpha_{drag}','alpha_{ero}', 'alpha_{dep}', 'alpha_{im}']
+param_names = ['CD_{air}','alpha_{drag}','alpha_{ero}', 'alpha_{dep}', 'alpha_{im}', 'hsal']
 plt.close('all')
 plt.figure(figsize=(12, 8))
 for i, (param_name, data) in enumerate(results.items()):
@@ -248,52 +250,115 @@ for param_name, data in results.items():
     best_value = data["values"][min_idx]
     min_error = data["errors"][min_idx]
     best_params[param_name] = {"value": best_value, "error": min_error}
+    
+n_params = len(best_params)
+n_cols = 2  # 每行放两个 2×2 图块
+n_rows = int(np.ceil(n_params / n_cols))
 
-# Plotting C, Usal, Q, Ua over time for best parameters
-for param_name, result in best_params.items():
+fig, axs = plt.subplots(n_rows * 2, n_cols * 2, figsize=(14, 6 * n_rows), sharex='col')
+fig.suptitle("Time evolution for best parameters", fontsize=18)
+
+for idx, (param_name, result) in enumerate(best_params.items()):
     min_idx = np.argmin(results[param_name]["errors"])
-    t = t_eval  # already defined earlier
+    t = t_eval
 
     C_best = results[param_name]["C_all"][min_idx]
     Usal_best = results[param_name]["Usal_all"][min_idx]
     Q_best = results[param_name]["Q_all"][min_idx]
     Ua_best = results[param_name]["Ua_all"][min_idx]
 
-    fig, axs = plt.subplots(2, 2, figsize=(8, 6), sharex=True)
-    fig.suptitle(f"Time evolution for best {param_name} = {result['value']:.3f}")
+    row_offset = (idx // n_cols) * 2
+    col_offset = (idx % n_cols) * 2
 
-    axs[0,0].plot(t, Q_dpm, color='k', label='DPM')
-    axs[0,0].plot(t, Q_best, label="Continuum", color="tab:blue")
-    axs[0,0].set_ylabel("Q [kg/m/s]")
-    axs[0,0].set_ylim(bottom=0)
-    axs[0,0].set_xlim(left=0)
-    axs[0,0].legend()
-    axs[0, 0].grid(True)
+    ax00 = axs[row_offset, col_offset]
+    ax01 = axs[row_offset, col_offset + 1]
+    ax10 = axs[row_offset + 1, col_offset]
+    ax11 = axs[row_offset + 1, col_offset + 1]
+
+    ax00.plot(t, Q_dpm, color='k', label='DPM')
+    ax00.plot(t, Q_best, label="Continuum", color="tab:blue")
+    ax00.set_ylabel("Q [kg/m/s]")
+    ax00.legend()
+    ax00.grid(True)
+    ax00.set_ylim(bottom=0)
+    ax00.set_xlim(left=0)
+    ax00.set_title(f"{param_name} = {result['value']:.3f}")
+
+    ax01.plot(t, C_dpm, color='k')
+    ax01.plot(t, C_best, label="C", color="tab:blue")
+    ax01.set_ylabel("C [kg/m²]")
+    ax01.grid(True)
+    ax01.set_ylim(bottom=0)
+    ax01.set_xlim(left=0)
+
+    ax10.plot(t, U_dpm, color='k')
+    ax10.plot(t, Usal_best, label="Usal", color="tab:blue")
+    ax10.set_ylabel("Usal [m/s]")
+    ax10.grid(True)
+    ax10.set_ylim(bottom=0)
+    ax10.set_xlim(left=0)
+
+    ax11.plot(t, Ua_dpm, color='k')
+    ax11.plot(t, Ua_best, label="Ua", color="tab:blue")
+    ax11.set_ylabel("Ua [m/s]")
+    ax11.set_xlabel("Time [s]")
+    ax11.grid(True)
+    ax11.set_ylim(bottom=0)
+    ax11.set_xlim(left=0)
+
+# Only bottom row shows x-axis labels
+for i in range(n_cols * 2):
+    axs[-1, i].set_xlabel("Time [s]")
+
+plt.tight_layout(rect=[0, 0, 1, 0.97])
+plt.show()
+
+
+# # Plotting C, Usal, Q, Ua over time for best parameters
+# for param_name, result in best_params.items():
+#     min_idx = np.argmin(results[param_name]["errors"])
+#     t = t_eval  # already defined earlier
+
+#     C_best = results[param_name]["C_all"][min_idx]
+#     Usal_best = results[param_name]["Usal_all"][min_idx]
+#     Q_best = results[param_name]["Q_all"][min_idx]
+#     Ua_best = results[param_name]["Ua_all"][min_idx]
+
+#     fig, axs = plt.subplots(2, 2, figsize=(8, 6), sharex=True)
+#     fig.suptitle(f"Time evolution for best {param_name} = {result['value']:.3f}")
+
+#     axs[0,0].plot(t, Q_dpm, color='k', label='DPM')
+#     axs[0,0].plot(t, Q_best, label="Continuum", color="tab:blue")
+#     axs[0,0].set_ylabel("Q [kg/m/s]")
+#     axs[0,0].set_ylim(bottom=0)
+#     axs[0,0].set_xlim(left=0)
+#     axs[0,0].legend()
+#     axs[0, 0].grid(True)
     
-    axs[0,1].plot(t, C_dpm, color='k', label='DPM simulation')
-    axs[0,1].plot(t, C_best, label="C", color="tab:blue")
-    axs[0,1].set_ylabel("C [kg/m^2]")
-    axs[0,1].set_ylim(bottom=0)
-    axs[0,1].set_xlim(left=0)
-    axs[0, 1].grid(True)
+#     axs[0,1].plot(t, C_dpm, color='k', label='DPM simulation')
+#     axs[0,1].plot(t, C_best, label="C", color="tab:blue")
+#     axs[0,1].set_ylabel("C [kg/m^2]")
+#     axs[0,1].set_ylim(bottom=0)
+#     axs[0,1].set_xlim(left=0)
+#     axs[0, 1].grid(True)
 
-    axs[1,0].plot(t, U_dpm, color='k')
-    axs[1,0].plot(t, Usal_best, label="Usal", color="tab:blue")
-    axs[1,0].set_ylabel("Usal [m/s]")
-    axs[1,0].set_ylim(bottom=0)
-    axs[1,0].set_xlim(left=0)
-    axs[1, 0].grid(True)
+#     axs[1,0].plot(t, U_dpm, color='k')
+#     axs[1,0].plot(t, Usal_best, label="Usal", color="tab:blue")
+#     axs[1,0].set_ylabel("Usal [m/s]")
+#     axs[1,0].set_ylim(bottom=0)
+#     axs[1,0].set_xlim(left=0)
+#     axs[1, 0].grid(True)
     
-    axs[1,1].plot(t, Ua_dpm, color='k')
-    axs[1,1].plot(t, Ua_best, label="Ua", color="tab:blue")
-    axs[1,1].set_xlabel("Time [s]")
-    axs[1,1].set_ylabel("Ua [m/s]")
-    axs[1,1].set_ylim(bottom=0)
-    axs[1,1].set_xlim(left=0)
-    axs[1, 1].grid(True)
+#     axs[1,1].plot(t, Ua_dpm, color='k')
+#     axs[1,1].plot(t, Ua_best, label="Ua", color="tab:blue")
+#     axs[1,1].set_xlabel("Time [s]")
+#     axs[1,1].set_ylabel("Ua [m/s]")
+#     axs[1,1].set_ylim(bottom=0)
+#     axs[1,1].set_xlim(left=0)
+#     axs[1, 1].grid(True)
 
-    plt.tight_layout()  # leave space for suptitle
-    plt.show()
+#     plt.tight_layout()  # leave space for suptitle
+#     plt.show()
 
 
 
