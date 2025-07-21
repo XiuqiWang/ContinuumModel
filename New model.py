@@ -4,7 +4,6 @@ Created on Tue Jul  1 14:44:20 2025
 
 @author: WangX3
 """
-
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
@@ -19,11 +18,14 @@ Shields = np.linspace(0.01, 0.06, 6)
 u_star = np.sqrt(Shields * (2650-1.225)*9.81*D/1.225)
 
 # mass of air per unit area
-hsal = 0.2 - 0.00025*10
+hsal = 0.1 - 0.00025*10
 mass_air = 1.225 * hsal
-CD_air = 9e-3
+CD_air = 8e-3
 CD_bed = 3e-4
-CD_drag_reduce = 1
+CD_drag_reduce = 0.431
+alpha_ero = 1#0.786
+alpha_dep = 1#1.235
+alpha_im = 1#1.684
 cos_thetaej = np.cos(47/180*np.pi)
 theta_dep = 25/180*np.pi
 
@@ -94,12 +96,12 @@ def make_odefun(u_star):
         mp = 2650 * np.pi/6 * D**3 #particle mass
         mom_drag = CD_drag_reduce * y[0]*fd_sal/mp
         # mass is gained through sand erosion, mom is gained through erosion and rebound
-        mass_ero =  NE * y[0] 
+        mass_ero =  alpha_ero * NE * y[0] 
         mom_ero = mass_ero * UE * cos_thetaej 
-        mass_im = y[0] * Pr
+        mass_im = alpha_im * y[0] * Pr
         mom_re = mass_im * Ure * cos_thetare 
         # mass is lost through deposition, mom is lost through incident motion
-        mass_dep = (1-Pr) * y[0]
+        mass_dep = alpha_dep * (1-Pr) * y[0]
         mom_inc =  mass_im * Uim_solution*np.cos(theta_im)/Tim + mass_dep * u_dep*np.cos(theta_dep)/Tdep 
         
         # momentum of air gets replenished slowly through shear at the top boundary
@@ -114,16 +116,25 @@ def make_odefun(u_star):
                 mom_air_gain - mom_air_loss - mom_drag]
         return dydt
     return odefun
-    
+
+# Read the data at Shields=0.06
+data = np.loadtxt('Shields006dry.txt', delimiter=',')
+Q_dpm = data[20:, 0]
+C_dpm = data[20:, 1]
+U_dpm = data[20:, 2]
+t_dpm = np.linspace(0,5,482)
+data_ua = np.loadtxt('TotalDragForce/Uair_ave-tS006Dryh01.txt', delimiter='\t')
+# Ua_dpm = np.insert(data_ua[20:,1], 0, Uair0[-1])
+Ua_dpm = data_ua[19:,1]    
 # Initial conditions
-c0 = 0.0139 # 0.147
-Usal0 = 2.9279 # 0.55
+c0 =  C_dpm[0] # 0.147 # 0.0139
+Usal0 = U_dpm[0] # 0.55 # 2.9279
 # Uair0 = [4.6827, 6.8129, 8.4490, 9.8194, 11.0206, 12.1046]  #h=0.1, u_air_end = 5.4162 m/s for Shields=0.06
-# Uair0 = [5.1, 7.4, 9.2, 10.7, 12.0, 13.1] #h=0.2 # Shields=0.01 uair0=5.1 #13.1 #0.01s 3.93
-Uair0 = [1.45, 4.47, 5.70, 6.62, 7.40, 8.11] # Uair derived from total drag force
+Uair0 = [5.1, 7.4, 9.2, 10.7, 12.0, Ua_dpm[0]] #h=0.2 # Shields=0.01 uair0=5.1 #13.1 #0.01s 3.93 #12.9983
+# Uair0 = [1.45, 4.47, 5.70, 6.62, 7.40, 8.11] # Uair derived from total drag force
 # Time span
-t_span = [0, 20]
-t_eval = np.linspace(t_span[0], t_span[1], 500)
+t_span = [0, 5]
+t_eval = np.linspace(t_span[0], t_span[1], 482)
 
 y_eval = []
 
@@ -134,15 +145,6 @@ for i in range(len(Uair0)):
     y_eval.append(sol.sol(t_eval))
 
 #calibrate splash functions with DPM data
-# Read the data at Shields=0.06
-data = np.loadtxt('Shields006dry.txt', delimiter=',')
-Q_dpm = data[:, 0]
-C_dpm = data[:, 1]
-U_dpm = data[:, 2]
-t_dpm = np.linspace(0,5,502)
-data_ua = np.loadtxt('TotalDragForce/u_airS006dry.txt', delimiter='\t')
-Ua_dpm = np.insert(data_ua, 0, Uair0[-1])
-
 plt.close('all')
 # Define the labels and keys once for reuse
 ylabels = ['Q [kg/m/s]', 'C [kg/m^2]', 'U_sal [m/s]', 'U_air [m/s]']
