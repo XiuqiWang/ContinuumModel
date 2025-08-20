@@ -66,7 +66,7 @@ MD_all = np.concatenate(MD_all_S)
 Xdata = np.vstack((Ua_all, U_all, C_all))
 p0 = [0.01, 2.5e-6, 1e-6, 2.0]  # initial guesses for b, k, n
 params, cov = curve_fit(total_drag_fit, Xdata, MD_all, p0=p0, maxfev=5000)
-print("Fitted parameters: zr = {:.3e}, z0 = {:.3e}, k = {:.3e}, n = {:.3f}".format(*params))
+print("Fitted parameters: hs = {:.3e}, z0 = {:.3e}, k = {:.3e}, n = {:.3f}".format(*params))
 # ------------------ Compute fitted MD ------------------
 MD_fit_all = total_drag_fit(Xdata, *params)
 # Compute residuals
