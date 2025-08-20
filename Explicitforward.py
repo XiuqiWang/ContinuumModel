@@ -12,6 +12,7 @@ u_star = np.sqrt(Shields * (2650 - 1.225) * 9.81 * D / 1.225)
 h = 0.2 - 0.00025 * 10
 mass_air = 1.225 * h
 rho_a = 1.225
+rho_p = 2650
 nu_a = 1.46e-5
 CD_air = 8e-3
 CD_bed = 3e-4
@@ -24,11 +25,13 @@ cos_thetaej = np.cos(47 / 180 * np.pi)
 
 def solveUim(u_sal): #R2=0.74
     u_sal = np.array(u_sal)
-    Uim = 0.96*(abs(u_sal)/constant) + 15.07
+    # Uim = 0.96*(abs(u_sal)/constant) + 15.07
+    Uim = 0.14 * abs(u_sal)/constant + 32.15
     return Uim*constant
 
 def solveUD(u_sal): #R2=0.83
-    UD = 0.96*(abs(u_sal)/constant) + 3.41
+    # UD = 0.96*(abs(u_sal)/constant) + 3.41
+    UD = 9.08
     return UD*constant
 
 def solveUinc(Uim, Udep, Tim, Tdep):
@@ -49,7 +52,8 @@ def Calfd(u_air, u_sal):
     u_eff = u_air * (np.log(hs/z0)-1)/(np.log(h/z0)-1)
     k = 3.216e-9
     n = 2.194
-    fd = k * abs(u_eff - u_sal) * (u_eff - u_sal)**(n-1)
+    Δu = u_eff - u_sal
+    fd = k * np.abs(Δu)**(n-1) * Δu
     # u_eff = 0.3*u_air
     # Re = abs(u_eff - u_sal) * D/(1.45e-6) + 1e-12
     # C_D = (np.sqrt(0.5) + np.sqrt(24 / Re))**2
@@ -62,39 +66,39 @@ def taub_minusphib(u_air):
     tau_b = rho_a * (nu_a + l_eff**2*abs(u_air/h))*u_air/h
     return tau_b*(1-phi_b) 
 
-def CalCDbed(u_air):
-    Re = u_air * D / (1.46e-5)
-    CD_bed = 1.05e-6 * Re**2
-    return CD_bed
+# def CalCDbed(u_air):
+#     Re = u_air * D / (1.46e-5)
+#     CD_bed = 1.05e-6 * Re**2
+#     return CD_bed
 
 # Add a history buffer for u_sal
 u_sal_history = []
 
-def get_delayed_Uim(u_sal_current, t_current, t_prev, Tim):
-    # Store current u_sal and time
-    u_sal_history.append((t_current, u_sal_current))
+# def get_delayed_Uim(u_sal_current, t_current, t_prev, Tim):
+#     # Store current u_sal and time
+#     u_sal_history.append((t_current, u_sal_current))
     
-    # Remove entries older than Tim/2
-    u_sal_history[:] = [(t, u) for (t, u) in u_sal_history if t_current - t <= Tim/2]
+#     # Remove entries older than Tim/2
+#     u_sal_history[:] = [(t, u) for (t, u) in u_sal_history if t_current - t <= Tim/2]
     
-    # Compute time-weighted average 
-    if not u_sal_history:
-        Uim = solveUim(u_sal_current)
-        return Uim
+#     # Compute time-weighted average 
+#     if not u_sal_history:
+#         Uim = solveUim(u_sal_current)
+#         return Uim
     
-    # Target delay time
-    target_delay = Tim / 2
-    # Compute weights based on how close each timestamp is to Tim/2 ago
-    times = np.array([t_current - t for (t, u) in u_sal_history])
-    values = np.array([u for (t, u) in u_sal_history])
-    # Gaussian weight: peak at target_delay, width = target_delay/2
-    sigma = target_delay / 2
-    weights = np.exp(-0.5 * ((times - target_delay) / sigma) ** 2)
-    # Avoid divide-by-zero
-    if weights.sum() == 0:
-        return solveUim(u_sal_current)
-    weighted_mean_u = np.sum(values * weights) / np.sum(weights)
-    return solveUim(weighted_mean_u)
+#     # Target delay time
+#     target_delay = Tim / 2
+#     # Compute weights based on how close each timestamp is to Tim/2 ago
+#     times = np.array([t_current - t for (t, u) in u_sal_history])
+#     values = np.array([u for (t, u) in u_sal_history])
+#     # Gaussian weight: peak at target_delay, width = target_delay/2
+#     sigma = target_delay / 2
+#     weights = np.exp(-0.5 * ((times - target_delay) / sigma) ** 2)
+#     # Avoid divide-by-zero
+#     if weights.sum() == 0:
+#         return solveUim(u_sal_current)
+#     weighted_mean_u = np.sum(values * weights) / np.sum(weights)
+#     return solveUim(weighted_mean_u)
 
 def explicit_upwind_solver(u_star, y0, t_span, dt=0.001):
     t_start, t_end = t_span
@@ -107,8 +111,7 @@ def explicit_upwind_solver(u_star, y0, t_span, dt=0.001):
 
     for i in range(n_steps):
         # Current state
-        c_sal, mom_sal, mom_air = y[:, i]
-        u_air = mom_air / mass_air
+        c_sal, mom_sal, u_air = y[:, i]
         u_sal = mom_sal / (c_sal + 1e-9)
 
         # Solve Uim and related quantities
@@ -128,7 +131,7 @@ def explicit_upwind_solver(u_star, y0, t_span, dt=0.001):
         # Tim = 1e-9 + 2 * abs(Uim) * np.sin(theta_im) / 9.81
         # Tdep = 1e-9 + 2 * abs(Udep) * np.sin(theta_dep) / 9.81
         Tim = 0.04*Uim**0.84 + 1e-9
-        Tdep = 0.16*Udep**0.57 + 1e-9
+        Tdep = 0.07*Udep**0.66 + 1e-9
         
         # # Inside the time loop:
         # Uim = get_delayed_Uim(u_sal, t[i], t[i-1], Tim)
@@ -148,10 +151,10 @@ def explicit_upwind_solver(u_star, y0, t_span, dt=0.001):
         # Tdep = 1e-9 + 2 * abs(Udep) * np.sin(theta_dep) / 9.81
          
         # Splash functions
-        Uinc = solveUinc(Uim, Udep, Tim, Tdep)
-        Pr = 0.94 * np.exp(-7.12 * np.exp(-0.1 * abs(Uinc) / constant))
-        NE = 0.04 * abs(Uinc) / constant
-        UE = 4.53 * constant if Uinc >= 0 else -4.53 * constant
+        # Uinc = solveUinc(Uim, Udep, Tim, Tdep)
+        Pr = 0.94 * np.exp(-7.12 * np.exp(-0.1 * abs(Uim) / constant))
+        NE = 0.04 * abs(Uim) / constant
+        UE = 4.53 * constant if Uim >= 0 else -4.53 * constant
         COR = 3.05 * (abs(Uim) / constant + 1e-9) ** (-0.47)
 
         # Rebound angle
@@ -172,12 +175,11 @@ def explicit_upwind_solver(u_star, y0, t_span, dt=0.001):
         mom_drag_list[i+1] = mom_drag
 
         # Source terms (explicit upwind)
-        mass_ero = alpha_ero * NE * c_sal
+        mass_ero = alpha_ero * NE * (cim/Tim + cdep/Tdep)
         mom_ero = mass_ero * UE * cos_thetaej
-        mass_im = cim
-        mom_re = mass_im * Ure * cos_thetare
-        mass_dep = cdep
-        mom_im = mass_im * Uim * np.cos(theta_im)
+        mom_re = cim * Ure * cos_thetare / Tim
+        mass_dep = cdep / Tdep
+        mom_im = cim * Uim * np.cos(theta_im) / Tim
         mom_dep = mass_dep * Udep * np.cos(theta_dep)
 
         # Air momentum sources
@@ -185,15 +187,18 @@ def explicit_upwind_solver(u_star, y0, t_span, dt=0.001):
         mom_air_loss = taub_minusphib(u_air)
         # CD_bed = CalCDbed(u_air)
         # mom_air_loss = 0.5* 1.225 * CD_bed * u_air * abs(u_air) 
+        # Effective air mass per area
+        chi = max(1e-6, 1.0 - c_sal/(rho_p*h))           # keep positive
+        m_air_eff = rho_a * h * chi
 
         # Update state (forward Euler)
-        y[0, i + 1] = c_sal + dt * (mass_ero / Tim - mass_dep / Tdep)
-        y[1, i + 1] = mom_sal + dt * (mom_drag + mom_ero / Tim + mom_re / Tim - mom_im / Tim - mom_dep / Tdep)
-        y[2, i + 1] = mom_air + dt * (mom_air_gain - mom_air_loss - mom_drag)
+        y[0, i + 1] = c_sal + dt * (mass_ero - mass_dep)
+        y[1, i + 1] = mom_sal + dt * (mom_drag + mom_ero + mom_re - mom_im - mom_dep)
+        y[2, i + 1] = u_air + dt * (mom_air_gain - mom_air_loss - mom_drag)/m_air_eff
 
     return t, y, mom_drag_list
 
-data = np.loadtxt('Shields006dry.txt')
+data = np.loadtxt('CGdata/Shields006dry.txt')
 Q_dpm = data[:, 0]
 C_dpm = data[:, 1]
 U_dpm = data[:, 2]
@@ -209,7 +214,7 @@ FD_dpm = data_FD / (100 * D * 2 * D)
 c0 =  C_dpm[0] # 0.147 # 0.0139
 Usal0 = U_dpm[0] # 0.55 # 2.9279
 Uair0 = Ua_dpm[0]
-y0 = [c0, c0 * Usal0, 13 * mass_air]
+y0 = [c0, c0 * Usal0, 13]
 t_span = [0, 5]
 dt = 0.001  # Time step (adjust for stability)
 
