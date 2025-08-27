@@ -44,7 +44,7 @@ for i in range(2, 7):
     file_fd = f'TotalDragForce/FD_S00{i}dry.txt'
     data_FD = np.loadtxt(file_fd)
     MD = data_FD/(100 * D * 2 * D)
-    file_c = f'Shields00{i}dry.txt'
+    file_c = f'CGdata/Shields00{i}dry.txt'
     data_dpm = np.loadtxt(file_c)
     Q_dpm = data_dpm[:, 0]
     C_dpm = data_dpm[:, 1]

@@ -54,7 +54,7 @@ for i in range(2, 7):
     data_FD = np.loadtxt(file_fd)
     FD_dpm = data_FD / (100 * D * 2 * D)
     
-    file_c = f'Shields00{i}dry.txt'
+    file_c = f'CGdata/Shields00{i}dry.txt'
     data_dpm = np.loadtxt(file_c)
     c_dpm = data_dpm[:, 1]
     phi = c_dpm/(rho_sand*h)
