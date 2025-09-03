@@ -23,8 +23,9 @@ u_star = np.sqrt(Shields * (2650-1.225)*9.81*D/1.225)
 t = np.linspace(0, 5, 501)
 mp = 2650 * np.pi/6 * D**3 #particle mass
 
-def drag_model(Ua, U, b, k):
+def drag_model(x, b, k):
     # ueff = Ua/(np.log(h/z0)-1) * np.log(zr/z0)
+    Ua, U = x
     ueff = b*Ua
     # ueff = Ua * (np.log(hs/z0) - 1) / (np.log(h/z0) - 1)
     # print('Ua', Ua)
@@ -86,6 +87,12 @@ def BinfdUa(Ua, fd, U, Uabin):
         Ua_median[i] = np.median(Ua_i)
     return fd_mean, fd_se, U_mean, Ua_median
 
+def weighted_r2(y_true, y_pred, weights):
+    y_avg = np.average(y_true, weights=weights)
+    ss_res = np.sum(weights * (y_true - y_pred)**2)
+    ss_tot = np.sum(weights * (y_true - y_avg)**2)
+    return 1 - ss_res / ss_tot
+
 Ua_bin = np.linspace(0, 13, 21)
 b = 0.4
 k = 5e-9
@@ -103,28 +110,37 @@ for i in range(2, 7):
     file_ua = f'TotalDragForce/Uair_ave-tS00{i}Dryh02.txt'
     Ua_dpm = np.loadtxt(file_ua, delimiter='\t')[:, 1]
     
-    
     # binning Ua and getting the mean of RHS
     fd_dpm = MD*mp/C_dpm
     fd_dpm_binned, fd_dpm_se, U_dpm_binned, Ua_dpm_binned = BinfdUa(Ua_dpm, fd_dpm, U_dpm, Ua_bin)
-    #------ compute LHD ------
-    fd = drag_model(Ua_dpm_binned, U_dpm_binned, b, k)
     
     # Combine
-    C_all_S.append(C_dpm)
-    U_all_S.append(U_dpm)
+    U_all_S.append(U_dpm_binned)
     Ua_all_S.append(Ua_dpm_binned)
     fd_ori.append(fd_dpm_binned)
     fd_ori_se.append(fd_dpm_se)
-    fd_com.append(fd)
+
+U_all = np.concatenate(U_all_S)
+Ua_all = np.concatenate(Ua_all_S)
+fd_all = np.concatenate(fd_ori)
+fd_se_all = np.concatenate(fd_ori_se)
+mask = np.isfinite(U_all) & np.isfinite(Ua_all) & np.isfinite(fd_all) & np.isfinite(fd_se_all)
+U_all, Ua_all, fd_all, fd_se_all = U_all[mask], Ua_all[mask], fd_all[mask], fd_se_all[mask]
+
+p0 = (0.4, 5e-9)
+popt, _ = curve_fit(drag_model, (Ua_all, U_all), fd_all, sigma=fd_se_all, absolute_sigma=True)
+b_hat, k_hat = popt
+fd_pred = drag_model((Ua_all, U_all), b_hat, k_hat)
+r2 = weighted_r2(fd_all, fd_pred, 1/fd_se_all**2)
+print('r2', r2)
 
 plt.close('all')
 plt.figure(figsize=(12, 10))
 for i in range(5):
     plt.subplot(3, 2, i + 1)
+    fd_com = drag_model((Ua_all_S[i], U_all_S[i]), b_hat, k_hat)
     plt.errorbar(Ua_all_S[i], fd_ori[i], yerr=fd_ori_se[i], fmt='o', capsize=5, label='DPM')
-    plt.plot(Ua_all_S[i], fd_com[i], 'o', label='fit')
-    # plt.plot(t_con, FD_continuum, label='Continuum')
+    plt.plot(Ua_all_S[i], fd_com, 'o', label='fit')
     plt.title(f"S00{i+2} Dry")
     plt.xlabel('Ua [m/s]')
     plt.ylabel(r'$f_d$ [N]')
