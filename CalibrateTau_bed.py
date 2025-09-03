@@ -146,6 +146,7 @@ plt.figure(figsize=(12, 10))
 for i in range(5):
     plt.subplot(3, 2, i + 1)
     LHS = tau_bed_dragform(Ua_all_S[i], CDbed, Ua_c, n)
+    print('i',i,'LHS', LHS)
     plt.errorbar(Ua_all_S[i], RHS_all_S[i], yerr=RHS_se_all[i], fmt='o', capsize=5, label='DPM')
     plt.plot(Ua_all_S[i], LHS, 'o', label='fit')
     plt.title(f"S00{i+2} Dry")
