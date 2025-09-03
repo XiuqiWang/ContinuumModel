@@ -26,10 +26,6 @@ u_star = np.sqrt(Shields * (2650-1.225)*9.81*D/1.225)
 t = np.linspace(0, 5, 501)
 dt = np.mean(np.diff(t))
 
-# Containers for storing results
-Ua_dpm_all = []
-S_obs_all = []
-
 def r2_score(y, ypred):
     ss_res = np.sum((y - ypred)**2)
     ss_tot = np.sum((y - np.mean(y))**2)
@@ -40,6 +36,69 @@ def tau_bottom_phi_model(Ua_arr, l_eff, phi_b):
     tau_bed = rho_a * (nu_a + (l_eff**2) * np.abs(Ua_arr)/h) * Ua_arr / h
     return tau_bed * (1-phi_b)
 
+def tau_bed_dragform(Ua_arr, CDbed, Ua_c, n):
+    return rho_a * CDbed * abs(Ua_arr-Ua_c)**n * np.sign(Ua_arr) 
+
+def BintaubUa(Ua, RHS, Uabin):
+    Ua = np.asarray(Ua, dtype=float)
+    RHS = np.asarray(RHS, dtype=float)
+    edges = np.asarray(Uabin, dtype=float)
+
+    if Ua.shape != RHS.shape:
+        raise ValueError("Ua and RHS must have the same shape.")
+    if edges.ndim != 1 or edges.size < 2:
+        raise ValueError("Uabin must be a 1D array of length >= 2 (bin edges).")
+    if not np.all(np.diff(edges) > 0):
+        raise ValueError("Uabin must be strictly increasing.")
+
+    # keep only finite pairs
+    m = np.isfinite(Ua) & np.isfinite(RHS)
+    Ua = Ua[m]
+    RHS = RHS[m]
+
+    nbins = edges.size - 1
+    RHS_mean   = np.full(nbins, np.nan, dtype=float)
+    RHS_se     = np.full(nbins, np.nan, dtype=float)
+    Ua_median = np.full(nbins, np.nan, dtype=float)
+
+    for i in range(nbins):
+        lo, hi = edges[i], edges[i+1]
+        # right-inclusive on the last bin
+        if i < nbins - 1:
+            sel = (Ua >= lo) & (Ua < hi)
+        else:
+            sel = (Ua >= lo) & (Ua <= hi)
+
+        if not np.any(sel):
+            continue
+
+        RHS_i = RHS[sel]
+        Ua_i = Ua[sel]
+        n = RHS_i.size
+
+        RHS_mean[i] = np.mean(RHS_i)
+        if n > 1:
+            sd = np.std(RHS_i, ddof=1)
+            se = sd / np.sqrt(n)
+            RHS_se[i] = np.nan if se == 0 else se
+        else:
+            RHS_se[i] = np.nan
+
+        Ua_median[i] = np.median(Ua_i)
+    return RHS_mean, RHS_se, Ua_median
+
+def weighted_r2(y_true, y_pred, weights):
+    y_avg = np.average(y_true, weights=weights)
+    ss_res = np.sum(weights * (y_true - y_pred)**2)
+    ss_tot = np.sum(weights * (y_true - y_avg)**2)
+    return 1 - ss_res / ss_tot
+
+l_eff = 0.025
+phi_b = 0.4
+Ua_bin = np.linspace(0, 13, 21)
+CDbed, Ua_c, n = 0.11, 5, 1.75 # for dragform
+# Containers for storing results
+Ua_all_S, RHS_se_all_S, RHS_all_S = [], [], []
 # Loop over conditions S002 to S006
 for i in range(2, 7):
     shields_val = i * 0.01  # Convert index to Shields value
@@ -58,38 +117,43 @@ for i in range(2, 7):
     data_dpm = np.loadtxt(file_c)
     c_dpm = data_dpm[:, 1]
     phi = c_dpm/(rho_sand*h)
+    
+    #---- compute RHS ----
+    tau_top = np.ones(len(FD_dpm))*rho_a*u_star[i-2]**2
+    RHS = tau_top-FD_dpm-rho_a * h * (1-phi) * dUa_dt
+    RHS_binned, RHS_se, Ua_binned = BintaubUa(Ua_dpm, RHS, Ua_bin)
 
     # ---- Store results ----
-    Ua_dpm_all.append(Ua_dpm)
-    tau_top = np.ones(len(FD_dpm))*rho_a*u_star[i-2]**2
-    S_obs_all.append(tau_top-FD_dpm-rho_a * h * (1-phi) * dUa_dt)
+    Ua_all_S.append(Ua_binned)
+    RHS_all_S.append(RHS_binned)
+    RHS_se_all_S.append(RHS_se)
 
-Ua_all = np.concatenate(Ua_dpm_all) 
-S_obs = np.concatenate(S_obs_all)
+Ua_all= np.concatenate(Ua_all_S)
+RHS_all = np.concatenate(RHS_all_S)
+RHS_se_all = np.concatenate(RHS_se_all_S)
+mask = np.isfinite(Ua_all) & np.isfinite(RHS_all) & np.isfinite(RHS_se_all)
+Ua_all, RHS_all, RHS_se_all = Ua_all[mask], RHS_all[mask], RHS_se_all[mask] 
 
-p0 = [0.005, 0.2]  # initial guess for l_eff
-bounds=([1e-6, 0.0], [0.05,  0.64])
-params, cov = curve_fit(tau_bottom_phi_model, Ua_all, S_obs, p0=p0, bounds=bounds, maxfev=20000)
-l_eff, phi_b = params
-print(f"l_eff={l_eff:.4f} m, phi_b={phi_b:.3f}")
-S_b_fit_all = tau_bottom_phi_model(Ua_all, *params)
-print("R2 B =", r2_score(S_obs, S_b_fit_all))
-
-S_b = []
-for i in range(5):
-    tau_b = tau_bottom_phi_model(Ua_dpm_all[i], *params)
-    S_b.append(tau_b)
+popt, _ = curve_fit(tau_bed_dragform, Ua_all, RHS_all, sigma = RHS_se_all, absolute_sigma=True)
+CDbed, Ua_c, n = popt
+RHS_pred = tau_bed_dragform(Ua_all, CDbed, Ua_c, n)
+r2 = weighted_r2(RHS_all, RHS_pred, 1/RHS_se_all**2)
+print('r2', r2)
     
 # ---- Plotting ----
 plt.close('all')
 plt.figure(figsize=(12, 10))
 for i in range(5):
     plt.subplot(3, 2, i + 1)
-    plt.plot(t, S_b[i], label='fit', lw=1.8)
-    plt.plot(t, S_obs[501*i:501*(i+1)], label='DPM', lw=1.5)
+    LHS = tau_bed_dragform(Ua_all_S[i], CDbed, Ua_c, n)
+    plt.errorbar(Ua_all_S[i], RHS_all_S[i], yerr=RHS_se_all[i], fmt='o', capsize=5, label='DPM')
+    plt.plot(Ua_all_S[i], LHS, 'o', label='fit')
     plt.title(f"S00{i+2} Dry")
-    plt.xlabel("Time [s]")
+    plt.xlabel("Ua [m/s]")
     plt.ylabel(r"$\tau_b(1-\phi_b)$ [N/m$^2$]")
+    # plt.ylabel(r'$\tau_b=CD_b|cU_a|cU_a$ [N/m$^2$]')
+    plt.ylim(0,3)
+    plt.xlim(0,13)
     plt.grid(True)
     plt.legend()
 
@@ -97,3 +161,14 @@ plt.tight_layout()
 # plt.suptitle("Comparison of Computed and DPM $U_a$ Across Conditions", fontsize=16, y=1.02)
 plt.show()
 
+# plt.figure(figsize=(6, 5))
+# for i in range(5):
+#     plt.plot(Ua_dpm_all[i], RHS_all[i], '.', label=f'Shields=0.0{i+2}')
+# plt.xlabel("Ua [m/s]")
+# plt.ylabel(r"$\tau_b(1-\phi_b)$ [N/m$^2$]")
+# # plt.ylabel(r'$\tau_b=CD_b|cU_a|cU_a$ [N/m$^2$]')
+# plt.ylim(0,3)
+# plt.xlim(0, 13)
+# plt.grid(True)
+# plt.legend()
+# plt.tight_layout()
