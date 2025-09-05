@@ -104,7 +104,7 @@ def weighted_r2(y_true, y_pred, weights):
 
 l_eff = 0.025
 phi_b = 0.4
-Ua_bin = np.linspace(0, 13, 21)
+Ua_bin = np.linspace(0, 13, 31)
 CDbed, Ua_c, n = 0.11, 5, 1.75 # for dragform
 # Containers for storing results
 Ua_all_S, U_all_S, c_all_S = [], [], []
@@ -125,7 +125,7 @@ for i in range(2, 7):
     data_FD = np.loadtxt(file_fd)
     FD_dpm = data_FD / (100 * D * 2 * D)
     
-    file_c = f'CGdata/Shields00{i}dry.txt'
+    file_c = f'CGdata/hb=12d/Shields00{i}dry.txt'
     data_dpm = np.loadtxt(file_c)
     c_dpm = data_dpm[:, 1]
     U_dpm = data_dpm[:, 2]
@@ -137,7 +137,7 @@ for i in range(2, 7):
     RHS_binned, RHS_se, U_binned, c_binned, Ua_binned = BintaubUa(Ua_dpm, U_dpm, c_dpm, RHS_t, Ua_bin)
     
     #----- compute LHS-t with the optimised parameters -----
-    LHS_t = tau_bed_dragform((Ua_dpm, U_dpm, c_dpm), 2.105, 0.077)
+    LHS_t = tau_bed_dragform((Ua_dpm, U_dpm, c_dpm), 1.52, 0.08)
 
     # ---- Store results ----
     # first time-varying values

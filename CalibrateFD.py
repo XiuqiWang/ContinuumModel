@@ -23,16 +23,11 @@ u_star = np.sqrt(Shields * (2650-1.225)*9.81*D/1.225)
 t = np.linspace(0, 5, 501)
 mp = 2650 * np.pi/6 * D**3 #particle mass
 
-def drag_model(x, b, k):
-    # ueff = Ua/(np.log(h/z0)-1) * np.log(zr/z0)
+def drag_model(x, b, CD):
     Ua, U = x
     ueff = b*Ua
-    # ueff = Ua * (np.log(hs/z0) - 1) / (np.log(h/z0) - 1)
-    # print('Ua', Ua)
-    # print('zr', zr)
-    # print('ueff', ueff)
     U_rel = ueff - U
-    return k * np.abs(U_rel) * U_rel  
+    return np.pi*D**2/8 * rho_air * CD * np.abs(U_rel) * U_rel  
 
 def BinfdUa(Ua, fd, U, Uabin):
     Ua = np.asarray(Ua, dtype=float)
@@ -57,7 +52,7 @@ def BinfdUa(Ua, fd, U, Uabin):
     fd_mean   = np.full(nbins, np.nan, dtype=float)
     fd_se     = np.full(nbins, np.nan, dtype=float)
     U_mean    = np.full(nbins, np.nan, dtype=float)
-    Ua_median = np.full(nbins, np.nan, dtype=float)
+    Ua_mean = np.full(nbins, np.nan, dtype=float)
 
     for i in range(nbins):
         lo, hi = edges[i], edges[i+1]
@@ -84,8 +79,8 @@ def BinfdUa(Ua, fd, U, Uabin):
         else:
             fd_se[i] = np.nan
 
-        Ua_median[i] = np.median(Ua_i)
-    return fd_mean, fd_se, U_mean, Ua_median
+        Ua_mean[i] = np.mean(Ua_i)
+    return fd_mean, fd_se, U_mean, Ua_mean
 
 def weighted_r2(y_true, y_pred, weights):
     y_avg = np.average(y_true, weights=weights)
@@ -102,7 +97,7 @@ for i in range(2, 7):
     file_fd = f'TotalDragForce/FD_S00{i}dry.txt'
     data_FD = np.loadtxt(file_fd)
     MD = data_FD/(100 * D * 2 * D)
-    file_c = f'CGdata/Shields00{i}dry.txt'
+    file_c = f'CGdata/hb=12d/Shields00{i}dry.txt'
     data_dpm = np.loadtxt(file_c)
     Q_dpm = data_dpm[:, 0]
     C_dpm = data_dpm[:, 1]
@@ -128,9 +123,10 @@ mask = np.isfinite(U_all) & np.isfinite(Ua_all) & np.isfinite(fd_all) & np.isfin
 U_all, Ua_all, fd_all, fd_se_all = U_all[mask], Ua_all[mask], fd_all[mask], fd_se_all[mask]
 
 p0 = (0.4, 5e-9)
-popt, _ = curve_fit(drag_model, (Ua_all, U_all), fd_all, sigma=fd_se_all, absolute_sigma=True)
-b_hat, k_hat = popt
-fd_pred = drag_model((Ua_all, U_all), b_hat, k_hat)
+popt, _ = curve_fit(drag_model, (Ua_all, U_all), fd_all, sigma=fd_se_all, absolute_sigma=True, maxfev=20000)
+b_hat, CD_hat = popt
+print(f'b_hat={b_hat:.2f}, CD_hat={CD_hat:.4f}')
+fd_pred = drag_model((Ua_all, U_all), b_hat, CD_hat)
 r2 = weighted_r2(fd_all, fd_pred, 1/fd_se_all**2)
 print('r2', r2)
 
@@ -138,7 +134,7 @@ plt.close('all')
 plt.figure(figsize=(12, 10))
 for i in range(5):
     plt.subplot(3, 2, i + 1)
-    fd_com = drag_model((Ua_all_S[i], U_all_S[i]), b_hat, k_hat)
+    fd_com = drag_model((Ua_all_S[i], U_all_S[i]), b_hat, CD_hat)
     plt.errorbar(Ua_all_S[i], fd_ori[i], yerr=fd_ori_se[i], fmt='o', capsize=5, label='DPM')
     plt.plot(Ua_all_S[i], fd_com, 'o', label='fit')
     plt.title(f"S00{i+2} Dry")
