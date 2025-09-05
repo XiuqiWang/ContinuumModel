@@ -23,6 +23,7 @@ rho_sand = 2650
 nu_a = 1.46e-5
 Shields = np.linspace(0.02, 0.06, 5)
 u_star = np.sqrt(Shields * (2650-1.225)*9.81*D/1.225)
+mp = 2650 * np.pi/6 * D**3 #particle mass
 t = np.linspace(0, 5, 501)
 dt = np.mean(np.diff(t))
 
@@ -31,13 +32,16 @@ def r2_score(y, ypred):
     ss_tot = np.sum((y - np.mean(y))**2)
     return 1.0 - ss_res/ss_tot
 
-def tau_bottom_phi_model(Ua_arr, l_eff, phi_b):
-    """Height-averaged mixing-length bottom stress"""
-    tau_bed = rho_a * (nu_a + (l_eff**2) * np.abs(Ua_arr)/h) * Ua_arr / h
-    return tau_bed * (1-phi_b)
+# def tau_bottom_phi_model(Ua_arr, l_eff, phi_b):
+#     """Height-averaged mixing-length bottom stress"""
+#     tau_bed = rho_a * (nu_a + (l_eff**2) * np.abs(Ua_arr)/h) * Ua_arr / h
+#     return tau_bed * (1-phi_b)
 
-def tau_bed_dragform(Ua_arr, CDbed, Ua_c, n):
-    return rho_a * CDbed * abs(Ua_arr-Ua_c)**n * np.sign(Ua_arr) 
+def tau_bed_dragform(x, beta, K):
+    Ua, U, c = x
+    Ubed = beta*U
+    tau_b_oneminusphib = rho_a * K * c/(rho_sand*D) * abs(Ua-Ubed) * (Ua-Ubed) 
+    return tau_b_oneminusphib
 
 def BintaubUa(Ua, RHS, Uabin):
     Ua = np.asarray(Ua, dtype=float)
@@ -98,7 +102,8 @@ phi_b = 0.4
 Ua_bin = np.linspace(0, 13, 21)
 CDbed, Ua_c, n = 0.11, 5, 1.75 # for dragform
 # Containers for storing results
-Ua_all_S, RHS_se_all_S, RHS_all_S = [], [], []
+Ua_all_S, RHS_se_all_S, RHS_all_S, LHS_all_S = [], [], [], []
+U_all_S, c_all_S = [],[]
 # Loop over conditions S002 to S006
 for i in range(2, 7):
     shields_val = i * 0.01  # Convert index to Shields value
@@ -116,39 +121,67 @@ for i in range(2, 7):
     file_c = f'CGdata/Shields00{i}dry.txt'
     data_dpm = np.loadtxt(file_c)
     c_dpm = data_dpm[:, 1]
+    U_dpm = data_dpm[:, 2]
     phi = c_dpm/(rho_sand*h)
     
     #---- compute RHS ----
     tau_top = np.ones(len(FD_dpm))*rho_a*u_star[i-2]**2
     RHS = tau_top-FD_dpm-rho_a * h * (1-phi) * dUa_dt
-    RHS_binned, RHS_se, Ua_binned = BintaubUa(Ua_dpm, RHS, Ua_bin)
+    # RHS_binned, RHS_se, Ua_binned = BintaubUa(Ua_dpm, RHS, Ua_bin)
+    
+    #----- compute LHS -----
+    LHS = tau_bed_dragform((Ua_dpm, U_dpm, c_dpm), 0.2, 0.05)
 
     # ---- Store results ----
-    Ua_all_S.append(Ua_binned)
-    RHS_all_S.append(RHS_binned)
-    RHS_se_all_S.append(RHS_se)
+    Ua_all_S.append(Ua_dpm)
+    U_all_S.append(U_dpm)
+    c_all_S.append(c_dpm)
+    RHS_all_S.append(RHS)
+    # RHS_se_all_S.append(RHS_se)
+    LHS_all_S.append(LHS)
+
+plt.close('all')
+plt.figure(figsize=(12, 10))
+for i in range(5):
+    plt.subplot(3, 2, i + 1)
+    plt.plot(Ua_all_S[i], RHS_all_S[i], '.', label='DPM')
+    plt.plot(Ua_all_S[i], LHS_all_S[i], '.', label='proposed')
+    plt.title(f"S00{i+2} Dry")
+    # plt.xlabel("Ua [m/s]")
+    plt.ylabel(r"$\tau_b(1-\phi_b)$ [N/m$^2$]")
+    plt.ylim(0,3)
+    plt.xlim(0,13.5)
+    plt.grid(True)
+    plt.legend()
+plt.tight_layout()
+plt.show()
+
 
 Ua_all= np.concatenate(Ua_all_S)
+U_all= np.concatenate(U_all_S)
+c_all= np.concatenate(c_all_S)
 RHS_all = np.concatenate(RHS_all_S)
-RHS_se_all = np.concatenate(RHS_se_all_S)
-mask = np.isfinite(Ua_all) & np.isfinite(RHS_all) & np.isfinite(RHS_se_all)
-Ua_all, RHS_all, RHS_se_all = Ua_all[mask], RHS_all[mask], RHS_se_all[mask] 
+# RHS_se_all = np.concatenate(RHS_se_all_S)
+mask = np.isfinite(Ua_all) & np.isfinite(RHS_all) #& np.isfinite(RHS_se_all)
+Ua_all, RHS_all = Ua_all[mask], RHS_all[mask] #RHS_se_all = RHS_se_all[mask] 
+U_all, c_all = U_all[mask], c_all[mask]
 
-popt, _ = curve_fit(tau_bed_dragform, Ua_all, RHS_all, sigma = RHS_se_all, absolute_sigma=True)
-CDbed, Ua_c, n = popt
-RHS_pred = tau_bed_dragform(Ua_all, CDbed, Ua_c, n)
-r2 = weighted_r2(RHS_all, RHS_pred, 1/RHS_se_all**2)
-print('r2', r2)
+popt, _ = curve_fit(tau_bed_dragform, (Ua_all, U_all, c_all), RHS_all)
+beta, K = popt
+# RHS_pred = tau_bed_dragform(Ua_all, CDbed, Ua_c, n)
+# r2 = weighted_r2(RHS_all, RHS_pred, 1/RHS_se_all**2)
+# print('r2', r2)
     
 # ---- Plotting ----
 plt.close('all')
 plt.figure(figsize=(12, 10))
 for i in range(5):
     plt.subplot(3, 2, i + 1)
-    LHS = tau_bed_dragform(Ua_all_S[i], CDbed, Ua_c, n)
-    print('i',i,'LHS', LHS)
-    plt.errorbar(Ua_all_S[i], RHS_all_S[i], yerr=RHS_se_all[i], fmt='o', capsize=5, label='DPM')
-    plt.plot(Ua_all_S[i], LHS, 'o', label='fit')
+    LHS = tau_bed_dragform((Ua_all_S[i], U_all_S[i], c_all_S[i]), beta, K)
+    plt.plot(Ua_all_S[i], RHS_all_S[i], '.', label='DPM')
+    plt.plot(Ua_all_S[i], LHS, '.', label='fit')
+    # plt.errorbar(Ua_all_S[i], RHS_all_S[i], yerr=RHS_se_all[i], fmt='o', capsize=5, label='DPM')
+    # plt.plot(Ua_all_S[i], LHS, 'o', label='fit')
     plt.title(f"S00{i+2} Dry")
     plt.xlabel("Ua [m/s]")
     plt.ylabel(r"$\tau_b(1-\phi_b)$ [N/m$^2$]")
