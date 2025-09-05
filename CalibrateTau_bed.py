@@ -43,7 +43,7 @@ def tau_bed_dragform(x, beta, K):
     tau_b_oneminusphib = rho_a * K * c/(rho_sand*D) * abs(Ua-Ubed) * (Ua-Ubed) 
     return tau_b_oneminusphib
 
-def BintaubUa(Ua, RHS, Uabin):
+def BintaubUa(Ua, U, c, RHS, Uabin):
     Ua = np.asarray(Ua, dtype=float)
     RHS = np.asarray(RHS, dtype=float)
     edges = np.asarray(Uabin, dtype=float)
@@ -63,7 +63,9 @@ def BintaubUa(Ua, RHS, Uabin):
     nbins = edges.size - 1
     RHS_mean   = np.full(nbins, np.nan, dtype=float)
     RHS_se     = np.full(nbins, np.nan, dtype=float)
-    Ua_median = np.full(nbins, np.nan, dtype=float)
+    Ua_mean  = np.full(nbins, np.nan, dtype=float)
+    U_mean     = np.full(nbins, np.nan, dtype=float)
+    c_mean     = np.full(nbins, np.nan, dtype=float)
 
     for i in range(nbins):
         lo, hi = edges[i], edges[i+1]
@@ -78,6 +80,7 @@ def BintaubUa(Ua, RHS, Uabin):
 
         RHS_i = RHS[sel]
         Ua_i = Ua[sel]
+        U_i, c_i = U[sel], c[sel]
         n = RHS_i.size
 
         RHS_mean[i] = np.mean(RHS_i)
@@ -88,8 +91,10 @@ def BintaubUa(Ua, RHS, Uabin):
         else:
             RHS_se[i] = np.nan
 
-        Ua_median[i] = np.median(Ua_i)
-    return RHS_mean, RHS_se, Ua_median
+        Ua_mean[i] = np.mean(Ua_i)
+        U_mean[i]  = np.mean(U_i)
+        c_mean[i]  = np.mean(c_i)
+    return RHS_mean, RHS_se, U_mean, c_mean, Ua_mean
 
 def weighted_r2(y_true, y_pred, weights):
     y_avg = np.average(y_true, weights=weights)
@@ -102,8 +107,10 @@ phi_b = 0.4
 Ua_bin = np.linspace(0, 13, 21)
 CDbed, Ua_c, n = 0.11, 5, 1.75 # for dragform
 # Containers for storing results
-Ua_all_S, RHS_se_all_S, RHS_all_S, LHS_all_S = [], [], [], []
-U_all_S, c_all_S = [],[]
+Ua_all_S, U_all_S, c_all_S = [], [], []
+RHS_se_all_S, RHS_all_S, LHS_all_S = [], [], []
+Uat_all_S , LHSt_all_S, RHSt_all_S = [], [], []
+
 # Loop over conditions S002 to S006
 for i in range(2, 7):
     shields_val = i * 0.01  # Convert index to Shields value
@@ -124,30 +131,35 @@ for i in range(2, 7):
     U_dpm = data_dpm[:, 2]
     phi = c_dpm/(rho_sand*h)
     
-    #---- compute RHS ----
+    #---- compute RHS-t and binned RHS ----
     tau_top = np.ones(len(FD_dpm))*rho_a*u_star[i-2]**2
-    RHS = tau_top-FD_dpm-rho_a * h * (1-phi) * dUa_dt
-    # RHS_binned, RHS_se, Ua_binned = BintaubUa(Ua_dpm, RHS, Ua_bin)
+    RHS_t = tau_top-FD_dpm-rho_a * h * (1-phi) * dUa_dt
+    RHS_binned, RHS_se, U_binned, c_binned, Ua_binned = BintaubUa(Ua_dpm, U_dpm, c_dpm, RHS_t, Ua_bin)
     
-    #----- compute LHS -----
-    LHS = tau_bed_dragform((Ua_dpm, U_dpm, c_dpm), 0.2, 0.05)
+    #----- compute LHS-t with the optimised parameters -----
+    LHS_t = tau_bed_dragform((Ua_dpm, U_dpm, c_dpm), 2.105, 0.077)
 
     # ---- Store results ----
-    Ua_all_S.append(Ua_dpm)
-    U_all_S.append(U_dpm)
-    c_all_S.append(c_dpm)
-    RHS_all_S.append(RHS)
-    # RHS_se_all_S.append(RHS_se)
-    LHS_all_S.append(LHS)
+    # first time-varying values
+    Uat_all_S.append(Ua_dpm)
+    RHSt_all_S.append(RHS_t)
+    LHSt_all_S.append(LHS_t)
+    
+    # second binned values
+    Ua_all_S.append(Ua_binned)
+    U_all_S.append(U_binned)
+    c_all_S.append(c_binned)
+    RHS_all_S.append(RHS_binned)
+    RHS_se_all_S.append(RHS_se)
 
 plt.close('all')
 plt.figure(figsize=(12, 10))
 for i in range(5):
     plt.subplot(3, 2, i + 1)
-    plt.plot(Ua_all_S[i], RHS_all_S[i], '.', label='DPM')
-    plt.plot(Ua_all_S[i], LHS_all_S[i], '.', label='proposed')
+    plt.plot(Uat_all_S[i], RHSt_all_S[i], '.', label='DPM')
+    plt.plot(Uat_all_S[i], LHSt_all_S[i], '.', label='proposed')
     plt.title(f"S00{i+2} Dry")
-    # plt.xlabel("Ua [m/s]")
+    plt.xlabel("Ua [m/s]")
     plt.ylabel(r"$\tau_b(1-\phi_b)$ [N/m$^2$]")
     plt.ylim(0,3)
     plt.xlim(0,13.5)
@@ -156,43 +168,37 @@ for i in range(5):
 plt.tight_layout()
 plt.show()
 
-
 Ua_all= np.concatenate(Ua_all_S)
 U_all= np.concatenate(U_all_S)
 c_all= np.concatenate(c_all_S)
 RHS_all = np.concatenate(RHS_all_S)
-# RHS_se_all = np.concatenate(RHS_se_all_S)
-mask = np.isfinite(Ua_all) & np.isfinite(RHS_all) #& np.isfinite(RHS_se_all)
-Ua_all, RHS_all = Ua_all[mask], RHS_all[mask] #RHS_se_all = RHS_se_all[mask] 
+RHS_se_all = np.concatenate(RHS_se_all_S)
+mask = np.isfinite(Ua_all) & np.isfinite(RHS_all) & np.isfinite(RHS_se_all)
+Ua_all, RHS_all, RHS_se_all = Ua_all[mask], RHS_all[mask], RHS_se_all[mask] 
 U_all, c_all = U_all[mask], c_all[mask]
 
-popt, _ = curve_fit(tau_bed_dragform, (Ua_all, U_all, c_all), RHS_all)
+popt, _ = curve_fit(tau_bed_dragform, (Ua_all, U_all, c_all), RHS_all, sigma=RHS_se_all, absolute_sigma=True)
 beta, K = popt
-# RHS_pred = tau_bed_dragform(Ua_all, CDbed, Ua_c, n)
-# r2 = weighted_r2(RHS_all, RHS_pred, 1/RHS_se_all**2)
-# print('r2', r2)
+print('beta', beta, 'K', K)
+RHS_pred = tau_bed_dragform((Ua_all, U_all, c_all), beta, K)
+r2 = weighted_r2(RHS_all, RHS_pred, 1/RHS_se_all**2)
+print('r2', r2)
     
 # ---- Plotting ----
-plt.close('all')
 plt.figure(figsize=(12, 10))
 for i in range(5):
     plt.subplot(3, 2, i + 1)
     LHS = tau_bed_dragform((Ua_all_S[i], U_all_S[i], c_all_S[i]), beta, K)
-    plt.plot(Ua_all_S[i], RHS_all_S[i], '.', label='DPM')
-    plt.plot(Ua_all_S[i], LHS, '.', label='fit')
-    # plt.errorbar(Ua_all_S[i], RHS_all_S[i], yerr=RHS_se_all[i], fmt='o', capsize=5, label='DPM')
-    # plt.plot(Ua_all_S[i], LHS, 'o', label='fit')
+    plt.errorbar(Ua_all_S[i], RHS_all_S[i], yerr=RHS_se_all[i], fmt='o', capsize=5, label='DPM')
+    plt.plot(Ua_all_S[i], LHS, 'o', label='fit')
     plt.title(f"S00{i+2} Dry")
     plt.xlabel("Ua [m/s]")
     plt.ylabel(r"$\tau_b(1-\phi_b)$ [N/m$^2$]")
-    # plt.ylabel(r'$\tau_b=CD_b|cU_a|cU_a$ [N/m$^2$]')
     plt.ylim(0,3)
     plt.xlim(0,13)
     plt.grid(True)
     plt.legend()
-
 plt.tight_layout()
-# plt.suptitle("Comparison of Computed and DPM $U_a$ Across Conditions", fontsize=16, y=1.02)
 plt.show()
 
 # plt.figure(figsize=(6, 5))
