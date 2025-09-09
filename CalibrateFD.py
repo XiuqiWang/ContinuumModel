@@ -12,7 +12,7 @@ from scipy.interpolate import interp1d
 from scipy.optimize import curve_fit
 
 ### FROM Ua to FD; Calibrate expression of mom_drag
-h = 0.2 - 0.00025*10
+h = 0.2 - 0.00025*12
 D = 0.00025
 kappa = 0.4
 # CD_air = 8e-3

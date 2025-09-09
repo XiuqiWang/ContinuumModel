@@ -14,7 +14,7 @@ import pandas as pd
 from scipy.signal import savgol_filter
 
 # from FD to Ua; Calibrate h dUa/dt = Mom_gain - Mom_loss - Mom_drag
-h = 0.2 - 0.00025*10
+h = 0.2 - 0.00025*12
 D = 0.00025
 kappa = 0.4
 # CD_air = 8e-3
@@ -137,7 +137,7 @@ for i in range(2, 7):
     RHS_binned, RHS_se, U_binned, c_binned, Ua_binned = BintaubUa(Ua_dpm, U_dpm, c_dpm, RHS_t, Ua_bin)
     
     #----- compute LHS-t with the optimised parameters -----
-    LHS_t = tau_bed_dragform((Ua_dpm, U_dpm, c_dpm), 1.52, 0.08)
+    LHS_t = tau_bed_dragform((Ua_dpm, U_dpm, c_dpm), 1.58, 0.08)
 
     # ---- Store results ----
     # first time-varying values
