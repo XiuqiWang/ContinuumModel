@@ -39,8 +39,8 @@ def r2_score(y, ypred):
 
 def tau_bed_dragform(x, beta, K):
     Ua, U, c = x
-    Ubed = beta*U
-    tau_b_oneminusphib = rho_a * K * c/(rho_sand*D) * abs(Ua-Ubed) * (Ua-Ubed) 
+    Uabed = beta*Ua
+    tau_b_oneminusphib = rho_a * K * c/(rho_sand*D) * abs(Uabed-U) * (Uabed-U) 
     return tau_b_oneminusphib
 
 def BintaubUa(Ua, U, c, RHS, Uabin):
@@ -134,30 +134,43 @@ for i in range(2, 7):
     #---- compute RHS-t and binned RHS ----
     tau_top = np.ones(len(FD_dpm))*rho_a*u_star[i-2]**2
     RHS_t = tau_top-FD_dpm-rho_a * h * (1-phi) * dUa_dt
-    RHS_binned, RHS_se, U_binned, c_binned, Ua_binned = BintaubUa(Ua_dpm, U_dpm, c_dpm, RHS_t, Ua_bin)
+    # RHS_binned, RHS_se, U_binned, c_binned, Ua_binned = BintaubUa(Ua_dpm, U_dpm, c_dpm, RHS_t, Ua_bin)
     
     #----- compute LHS-t with the optimised parameters -----
-    LHS_t = tau_bed_dragform((Ua_dpm, U_dpm, c_dpm), 1.58, 0.08)
+    # LHS_t = tau_bed_dragform((Ua_dpm, U_dpm, c_dpm), 1.58, 0.08)
 
     # ---- Store results ----
     # first time-varying values
-    Uat_all_S.append(Ua_dpm)
-    RHSt_all_S.append(RHS_t)
-    LHSt_all_S.append(LHS_t)
-    
-    # second binned values
-    Ua_all_S.append(Ua_binned)
-    U_all_S.append(U_binned)
-    c_all_S.append(c_binned)
-    RHS_all_S.append(RHS_binned)
-    RHS_se_all_S.append(RHS_se)
+    Ua_all_S.append(Ua_dpm)
+    U_all_S.append(U_dpm)
+    c_all_S.append(c_dpm)
+    RHS_all_S.append(RHS_t)
 
 plt.close('all')
+
+
+Ua_all= np.concatenate(Ua_all_S)
+U_all= np.concatenate(U_all_S)
+c_all= np.concatenate(c_all_S)
+RHS_all = np.concatenate(RHS_all_S)
+# mask = np.isfinite(Ua_all) & np.isfinite(RHS_all) 
+# Ua_all, RHS_all = Ua_all[mask], RHS_all[mask]
+# U_all, c_all = U_all[mask], c_all[mask]
+
+popt, _ = curve_fit(tau_bed_dragform, (Ua_all, U_all, c_all), RHS_all)
+beta, K = popt
+print('beta', beta, 'K', K)
+RHS_pred = tau_bed_dragform((Ua_all, U_all, c_all), beta, K)
+r2 = r2_score(RHS_all, RHS_pred)
+print('r2', r2)
+    
+# ---- Plotting ----
 plt.figure(figsize=(12, 10))
 for i in range(5):
     plt.subplot(3, 2, i + 1)
-    plt.plot(Uat_all_S[i], RHSt_all_S[i], '.', label='DPM')
-    plt.plot(Uat_all_S[i], LHSt_all_S[i], '.', label='proposed')
+    LHS = tau_bed_dragform((Ua_all_S[i], U_all_S[i], c_all_S[i]), beta, K)
+    plt.plot(Ua_all_S[i], RHS_all_S[i], '.', label='DPM')
+    plt.plot(Ua_all_S[i], LHS, '.', label='proposed')
     plt.title(f"S00{i+2} Dry")
     plt.xlabel("Ua [m/s]")
     plt.ylabel(r"$\tau_b(1-\phi_b)$ [N/m$^2$]")
@@ -168,38 +181,21 @@ for i in range(5):
 plt.tight_layout()
 plt.show()
 
-Ua_all= np.concatenate(Ua_all_S)
-U_all= np.concatenate(U_all_S)
-c_all= np.concatenate(c_all_S)
-RHS_all = np.concatenate(RHS_all_S)
-RHS_se_all = np.concatenate(RHS_se_all_S)
-mask = np.isfinite(Ua_all) & np.isfinite(RHS_all) & np.isfinite(RHS_se_all)
-Ua_all, RHS_all, RHS_se_all = Ua_all[mask], RHS_all[mask], RHS_se_all[mask] 
-U_all, c_all = U_all[mask], c_all[mask]
-
-popt, _ = curve_fit(tau_bed_dragform, (Ua_all, U_all, c_all), RHS_all, sigma=RHS_se_all, absolute_sigma=True)
-beta, K = popt
-print('beta', beta, 'K', K)
-RHS_pred = tau_bed_dragform((Ua_all, U_all, c_all), beta, K)
-r2 = weighted_r2(RHS_all, RHS_pred, 1/RHS_se_all**2)
-print('r2', r2)
-    
-# ---- Plotting ----
-plt.figure(figsize=(12, 10))
-for i in range(5):
-    plt.subplot(3, 2, i + 1)
-    LHS = tau_bed_dragform((Ua_all_S[i], U_all_S[i], c_all_S[i]), beta, K)
-    plt.errorbar(Ua_all_S[i], RHS_all_S[i], yerr=RHS_se_all[i], fmt='o', capsize=5, label='DPM')
-    plt.plot(Ua_all_S[i], LHS, 'o', label='fit')
-    plt.title(f"S00{i+2} Dry")
-    plt.xlabel("Ua [m/s]")
-    plt.ylabel(r"$\tau_b(1-\phi_b)$ [N/m$^2$]")
-    plt.ylim(0,3)
-    plt.xlim(0,13)
-    plt.grid(True)
-    plt.legend()
-plt.tight_layout()
-plt.show()
+# plt.figure(figsize=(12, 10))
+# for i in range(5):
+#     plt.subplot(3, 2, i + 1)
+#     LHS = tau_bed_dragform((Ua_all_S[i], U_all_S[i], c_all_S[i]), beta, K)
+#     plt.errorbar(Ua_all_S[i], RHS_all_S[i], yerr=RHS_se_all[i], fmt='o', capsize=5, label='DPM')
+#     plt.plot(Ua_all_S[i], LHS, 'o', label='fit')
+#     plt.title(f"S00{i+2} Dry")
+#     plt.xlabel("Ua [m/s]")
+#     plt.ylabel(r"$\tau_b(1-\phi_b)$ [N/m$^2$]")
+#     plt.ylim(0,3)
+#     plt.xlim(0,13)
+#     plt.grid(True)
+#     plt.legend()
+# plt.tight_layout()
+# plt.show()
 
 # plt.figure(figsize=(6, 5))
 # for i in range(5):
