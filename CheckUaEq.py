@@ -37,6 +37,11 @@ def tau_bed_dragform(Ua, U, c):
     tau_b_oneminusphib = rho_a * 0.08 * c/(rho_sand*D) * abs(Ua-Ubed) * (Ua-Ubed) 
     return tau_b_oneminusphib
 
+def MD_eff(Ua, U, c):
+    Uaeff = 0.85*Ua
+    MD_eff = rho_a * 0.12 * c/(rho_sand*D) *abs(Uaeff - U) * (Uaeff - U)
+    return MD_eff
+
 def Mdrag(c, Uair, U):
     """Momentum exchange (air→saltation): c * f_drag / m_p."""
     b = 0.53
@@ -87,21 +92,22 @@ for i in range(2, 7):
         m_air_eff = rho_a * h * chi
     
         # values at Ua_i
-        tb_i = tau_bed_dragform(Ua_i, U_i, C_i)
-        Md_i = Mdrag(C_i, Ua_i, U_i)
+        # tb_i = tau_bed_dragform(Ua_i, U_i, C_i)
+        # Md_i = Mdrag(C_i, Ua_i, U_i)
+        Mdeff_i = MD_eff(Ua_i, U_i, C_i)
     
         # Jacobians wrt Ua (finite-diff if analytic not available)
-        Kb = numdiff(lambda x: tau_bed_dragform(x, U_i, C_i), Ua_i)
-        Kd = numdiff(lambda x: Mdrag(C_i, x, U_i), Ua_i)
+        Kb = numdiff(lambda x: MD_eff(x, U_i, C_i), Ua_i)
+        # Kd = numdiff(lambda x: Mdrag(C_i, x, U_i), Ua_i)
     
         # semi-implicit closed form update
-        num = (m_air_eff/dt)*Ua_i + tauTop - tb_i - Md_i + (Kb + Kd)*Ua_i
-        den = (m_air_eff/dt) + Kb + Kd
+        num = (m_air_eff/dt)*Ua_i + tauTop - Mdeff_i + Kb*Ua_i #tb_i - Md_i + (Kb + Kd)*Ua_i
+        den = (m_air_eff/dt) + Kb #+ Kd
     
         # safety: avoid division by tiny den
         if den <= 1e-12:
             # fallback to explicit small step if pathological
-            dUdt = (tauTop - tb_i - Md_i) / max(m_air_eff, 1e-12)
+            dUdt = (tauTop - Mdeff_i) / max(m_air_eff, 1e-12) # - Md_i
             Ua[i+1] = Ua_i + dt * dUdt
         else:
             Ua[i+1] = num / den

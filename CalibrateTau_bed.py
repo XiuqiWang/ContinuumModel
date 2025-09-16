@@ -43,6 +43,12 @@ def tau_bed_dragform(x, beta, K):
     tau_b_oneminusphib = rho_a * K * c/(rho_sand*D) * abs(Uabed-U) * (Uabed-U) 
     return tau_b_oneminusphib
 
+def MD_eff(x, beta, K):
+    Ua, U, c = x
+    Uaeff = beta*Ua
+    MD_eff = rho_a * K * c/(rho_sand*D) *abs(Uaeff - U) * (Uaeff - U)
+    return MD_eff
+
 def BintaubUa(Ua, U, c, RHS, Uabin):
     Ua = np.asarray(Ua, dtype=float)
     RHS = np.asarray(RHS, dtype=float)
@@ -133,7 +139,8 @@ for i in range(2, 7):
     
     #---- compute RHS-t and binned RHS ----
     tau_top = np.ones(len(FD_dpm))*rho_a*u_star[i-2]**2
-    RHS_t = tau_top-FD_dpm-rho_a * h * (1-phi) * dUa_dt
+    # RHS_t = tau_top-FD_dpm-rho_a * h * (1-phi) * dUa_dt
+    RHS_t = tau_top - rho_a * h * (1-phi) * dUa_dt # combining the tau_bed and MD into one term
     # RHS_binned, RHS_se, U_binned, c_binned, Ua_binned = BintaubUa(Ua_dpm, U_dpm, c_dpm, RHS_t, Ua_bin)
     
     #----- compute LHS-t with the optimised parameters -----
@@ -157,10 +164,10 @@ RHS_all = np.concatenate(RHS_all_S)
 # Ua_all, RHS_all = Ua_all[mask], RHS_all[mask]
 # U_all, c_all = U_all[mask], c_all[mask]
 
-popt, _ = curve_fit(tau_bed_dragform, (Ua_all, U_all, c_all), RHS_all)
+popt, _ = curve_fit(MD_eff, (Ua_all, U_all, c_all), RHS_all)
 beta, K = popt
 print('beta', beta, 'K', K)
-RHS_pred = tau_bed_dragform((Ua_all, U_all, c_all), beta, K)
+RHS_pred = MD_eff((Ua_all, U_all, c_all), beta, K)
 r2 = r2_score(RHS_all, RHS_pred)
 print('r2', r2)
     
@@ -173,8 +180,8 @@ for i in range(5):
     plt.plot(Ua_all_S[i], LHS, '.', label='proposed')
     plt.title(f"S00{i+2} Dry")
     plt.xlabel("Ua [m/s]")
-    plt.ylabel(r"$\tau_b(1-\phi_b)$ [N/m$^2$]")
-    plt.ylim(0,3)
+    plt.ylabel(r"$M_{drag,eff}$ [N/m$^2$]")
+    plt.ylim(0,6)
     plt.xlim(0,13.5)
     plt.grid(True)
     plt.legend()
