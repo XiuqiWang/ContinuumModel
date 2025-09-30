@@ -102,36 +102,55 @@ def theta_reb_from_Uim(Uim):
     x = -0.0003*(abs(Uim)/const) + 0.52                              
     return np.arcsin(np.clip(x, 0, 1.0))
 
-def Mdrag(c, Uair, U):
-    """Momentum exchange (air→saltation): c * f_drag / m_p."""
-    b = 0.55
-    C_D = 0.1037
-    Ueff = b * Uair
-    dU = Ueff - U
-    fdrag = np.pi/8 * rho_a * d**2 * C_D * abs(dU) * dU                     
-    return (c * fdrag) / mp       
+# def Mdrag(c, Uair, U):
+#     """Momentum exchange (air→saltation): c * f_drag / m_p."""
+#     b = 0.55
+#     C_D = 0.1037
+#     Ueff = b * Uair
+#     dU = Ueff - U
+#     fdrag = np.pi/8 * rho_a * d**2 * C_D * abs(dU) * dU                     
+#     return (c * fdrag) / mp       
 
-def tau_bed(Uair, U, c):                    
-    K = 0.08
-    beta = 0.9
-    U_eff = beta*Uair
-    tau_bed_minusphib = rho_a*K*c/(rho_p*d) * abs(U_eff - U)*(U_eff - U)                            
-    return tau_bed_minusphib
+# def tau_bed(Uair, U, c):                    
+#     K = 0.08
+#     beta = 0.9
+#     U_eff = beta*Uair
+#     tau_bed_minusphib = rho_a*K*c/(rho_p*d) * abs(U_eff - U)*(U_eff - U)                            
+#     return tau_bed_minusphib
+
+# def MD_eff(Ua, U, c):
+#     Uaeff = 0.85*Ua
+#     MD_eff = rho_a * 0.12 * c/(rho_p*d) *abs(Uaeff - U) * (Uaeff - U)
+#     return MD_eff
 
 # tuning functions
 def Preff_of_U_param(U, params):
-    Pmax, Uc, pshape, _, _, _ = params
+    Pmax, Uc, pshape, _, _, _, _, _, _,_ = params
     Pmin = 0.0
     U = np.abs(U)
     return np.clip(Pmin + (Pmax - Pmin)*(1.0 - np.exp(-(U/max(Uc,1e-6))**pshape)), 0.0, 1.0)
 
 def e_COR_from_Uim_param(Uim, params, const):
-    _, _, _, A_e, B_e, _ = params
+    _, _, _, A_e, B_e, _, _, _, _,_ = params
     return A_e * (np.abs(Uim)/const + 1e-12)**(-B_e)
 
 def NE_from_Uinc_param(Uinc, params, const):
-    _, _, _, _, _, A_NE = params
+    _, _, _, _, _, A_NE, _, _, _,_ = params
     return A_NE * (np.abs(Uinc)/const) 
+
+def Mdrag_overc_param(Uair, U, params):
+    """Momentum exchange (air→saltation): c * f_drag / m_p."""
+    _,_,_,_,_,_,b, C_D, _,_ = params
+    Ueff = b * Uair
+    dU = Ueff - U
+    fdrag = np.pi/8 * rho_a * d**2 * C_D * abs(dU) * dU                     
+    return fdrag / mp    
+
+def MD_eff(Ua, U, c, params):
+    _,_,_,_,_,_,_,_, b_eff, CD_eff = params
+    Uaeff = b_eff*Ua
+    MD_eff = rho_a * CD_eff * c/(rho_p*d) *abs(Uaeff - U) * (Uaeff - U)
+    return MD_eff
 
 # helper
 def Cal_EDM_param(U, params, const, UE_mag, cos_thetaE,
@@ -175,7 +194,7 @@ def predict_steady(params, Shields, u_star, const, rho_a, mp,
                    UE_mag, cos_thetaE, d,
                    Uim_from_U, UD_from_U, Tim_from_Uim, TD_from_UD,
                    theta_im_from_Uim, theta_D_from_UD, theta_reb_from_Uim,
-                   Mdrag, tau_bed):
+                   Mdrag_overc_param, MD_eff):
     Usteady = np.zeros_like(Shields)
     Uasteady = np.zeros_like(Shields)
     csteady = np.zeros_like(Shields)
@@ -200,23 +219,24 @@ def predict_steady(params, Shields, u_star, const, rho_a, mp,
         _, _, M_bed_steady = Cal_EDM_param(Usteady[i], params, const, UE_mag, cos_thetaE,
                                            Uim_from_U, UD_from_U, Tim_from_Uim, TD_from_UD,
                                            theta_im_from_Uim, theta_D_from_UD, theta_reb_from_Uim)
-        dU = 0.55*Ua_grid - Usteady[i]
-        C_D = 0.1037
-        M_drag_overc = (np.pi/8) * d**2 * C_D * np.abs(dU) * dU / mp
+        # dU = 0.55*Ua_grid - Usteady[i]
+        # C_D = 0.1037
+        M_drag_overc = Mdrag_overc_param(Ua_grid, Usteady[i], params)
         Uasteady[i] = safe_interp(M_bed_steady, M_drag_overc, Ua_grid)
 
         # 3) steady c: tau_top = Mdrag(c) + tau_bed(c)
         tau_top = rho_a * u_star[i]**2
-        M_drag_c = Mdrag(c_grid, Uasteady[i], Usteady[i])
-        tau_bed_c = tau_bed(Uasteady[i], Usteady[i], c_grid)
-        csteady[i] = safe_interp(tau_top, M_drag_c + tau_bed_c, c_grid)
+        # M_drag_c = Mdrag(c_grid, Uasteady[i], Usteady[i])
+        # tau_bed_c = tau_bed(Uasteady[i], Usteady[i], c_grid)
+        M_drag_eff_c = MD_eff(Uasteady[i], Usteady[i], c_grid, params)
+        csteady[i] = safe_interp(tau_top, M_drag_eff_c, c_grid)
 
     return Usteady, Uasteady, csteady
 
 def make_residuals_fn(Shields, u_star, const, rho_a, mp, UE_mag, cos_thetaE, d,
                       Uim_from_U, UD_from_U, Tim_from_Uim, TD_from_UD,
                       theta_im_from_Uim, theta_D_from_UD, theta_reb_from_Uim,
-                      Mdrag, tau_bed,
+                      Mdrag_overc_param, MD_eff,
                       Us_dpm, Uas_dpm, cs_dpm,
                       wU, wUa, wc):
 
@@ -234,7 +254,7 @@ def make_residuals_fn(Shields, u_star, const, rho_a, mp, UE_mag, cos_thetaE, d,
                                   UE_mag, cos_thetaE, d,
                                   Uim_from_U, UD_from_U, Tim_from_Uim, TD_from_UD,
                                   theta_im_from_Uim, theta_D_from_UD, theta_reb_from_Uim,
-                                  Mdrag, tau_bed)
+                                  Mdrag_overc_param, MD_eff)
         # Pull U and Ua to their DPM means; keep c point-wise
         rU  = wU  * (U  - Us_mean)  / sU
         rUa = wUa * (Ua - Uas_mean) / sUa
@@ -268,41 +288,43 @@ cs_dpm = np.array([a[int(0.6*len(a)):].mean() for a in C_list])
 Uas_dpm = np.array([a[int(0.6*len(a)):].mean() for a in Ua_list])
 
 # --- initial guess and bounds for params: [Pmax, Uc, pshape, A_e, B_e, A_NE]
-p0     = np.array([0.6,  2.0,  0.7,  3.0,  0.5, 0.04])
-lb     = np.array([0.3,  0.1,  0.2,  0.5,  0.1, 0.005])
-ub     = np.array([0.99, 8.0,  3.0, 10.0,  1.0, 0.2 ])
+p0     = np.array([0.6,  2.0,  0.7,  3.0,  0.5, 0.05, 0.55, 0.15, 0.85, 0.12])
+lb     = np.array([0.3,  0.1,  0.2,  0.5,  0.1, 0.005, 0.01, 0.001, 0.01, 0.001])
+ub     = np.array([0.99, 8.0,  3.0, 10.0,  1.0, 0.2, 1.0, 0.5, 1.0, 0.5])
 
 resfn = make_residuals_fn(Shields, u_star, const, rho_a, mp, UE_mag, cos_thetaE, d,
                           Uim_from_U, UD_from_U, Tim_from_Uim, TD_from_UD,
-                          theta_im_from_Uim, theta_D_from_UD, theta_reb_from_Uim,
-                          Mdrag, tau_bed,
+                          theta_im_from_Uim, theta_D_from_UD, theta_reb_from_Uim, Mdrag_overc_param, MD_eff,
                           Us_dpm, Uas_dpm, cs_dpm,
-                          wU=2, wUa=0.5, wc=2)
+                          wU=1, wUa=1, wc=1)
 
 opt = least_squares(resfn, p0, bounds=(lb, ub), method='trf', loss='soft_l1', f_scale=1.0, xtol=1e-8, ftol=1e-8)
 
-print("Best-fit params [Pmax, Uc, p, A_e, B_e, A_NE] =", opt.x)
+print("Best-fit params [Pmax, Uc, p, A_e, B_e, A_NE, b, C_D, b_eff, C_D_eff] =", opt.x)
 Ufit, Uafit, cfit = predict_steady(opt.x, Shields, u_star, const, rho_a, mp,
                                    UE_mag, cos_thetaE, d,
                                    Uim_from_U, UD_from_U, Tim_from_Uim, TD_from_UD,
                                    theta_im_from_Uim, theta_D_from_UD, theta_reb_from_Uim,
-                                   Mdrag, tau_bed)
+                                   Mdrag_overc_param, MD_eff)
 
-# plt.close('all')
-plt.figure(figsize=(14,4))
+plt.close('all')
+plt.figure(figsize=(15,4))
 plt.subplot(1,3,1)
 plt.plot(Shields, Ufit, label='computed')
 plt.scatter(Shields, Us_dpm, label='DPM')
 plt.ylim(bottom=0)
+plt.xlabel('Shields number')
 plt.ylabel('Usteady')
-plt.legend()
+plt.legend(loc='lower left')
 plt.subplot(1,3,2)
 plt.plot(Shields, Uafit, label='computed')
 plt.scatter(Shields, Uas_dpm, label='DPM')
+plt.xlabel('Shields number')
 plt.ylabel('Uasteady')
 plt.legend()
 plt.subplot(1,3,3)
 plt.plot(Shields, cfit, label='computed')
 plt.scatter(Shields, cs_dpm, label='DPM')
+plt.xlabel('Shields number')
 plt.ylabel('c_steady')
 plt.legend()
