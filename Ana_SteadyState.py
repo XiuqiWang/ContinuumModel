@@ -79,6 +79,11 @@ def tau_bed(Uair, U, c):
     tau_bed_minusphib = rho_a*K*c/(rho_p*d) * abs(U_eff - U)*(U_eff - U)                            
     return tau_bed_minusphib
 
+def MD_eff(Ua, U, c):
+    Uaeff = 0.85*Ua
+    MD_eff = rho_a * 0.12 * c/(rho_p*d) *abs(Uaeff - U) * (Uaeff - U)
+    return MD_eff
+
 # tuning functions
 def Preff_of_U(U, Pmax, Uc, p):
     """State-conditioned rebound fraction. PDF marks 'needs calibration'—placeholder Gompertz-like."""
@@ -172,56 +177,63 @@ for i in range(5):
     
     # Steady c
     M_drag_com = Mdrag(c_com, Uasteady[i], Usteady[i])
-    tau_bed_com = tau_bed(Uasteady[i], Usteady[i], c_com)
+    # tau_bed_com = tau_bed(Uasteady[i], Usteady[i], c_com)
+    Mdrag_eff_com = MD_eff(Uasteady[i], Usteady[i], c_com)
     tau_top = rho_a * u_star[i] **2
-    csteady[i] = np.interp(tau_top, M_drag_com + tau_bed_com, c_com)
+    csteady[i] = np.interp(tau_top, Mdrag_eff_com, c_com)
 
 plt.close('all')
-plt.figure(figsize=(12,5))
+plt.figure(figsize=(15,4))
 plt.subplot(1,3,1)
 plt.plot(Shields, Usteady, label='computed')
 plt.scatter(Shields, Us_dpm, label='DPM')
 plt.ylim(bottom=0)
+plt.xlabel('Shields number')
 plt.ylabel('Usteady')
 plt.legend()
 plt.subplot(1,3,2)
 plt.plot(Shields, Uasteady, label='computed')
 plt.scatter(Shields, Uas_dpm, label='DPM')
+plt.xlabel('Shields number')
 plt.ylabel('Uasteady')
 plt.legend()
 plt.subplot(1,3,3)
 plt.plot(Shields, csteady, label='computed')
 plt.scatter(Shields, cs_dpm, label='DPM')
+plt.xlabel('Shields number')
 plt.ylabel('c_steady')
 plt.legend()
 
 
-# U_emp = U_list[4]
-# C_emp = C_list[4]
-# E_emp_overc = E_on_U/C_emp
-# D_emp_overc = D_on_U/C_emp
-# plt.figure()
-# plt.plot(U_com, E_overc, color='C0', label='E/c')
-# plt.plot(U_com, D_overc, color='C1', label='D/c')
+U_emp = U_list[4]
+C_emp = C_list[4]
+E_emp_overc = E_on_U/C_emp
+D_emp_overc = D_on_U/C_emp
+
+plt.figure(figsize=(15,4))
+plt.subplot(1,3,1)
+plt.plot(U_com, E_overc, color='C0', label='E/c')
+plt.plot(U_com, D_overc, color='C1', label='D/c')
+plt.plot(U_emp, E_emp_overc, 'C0.', label='E/c DPM')
+plt.plot(U_emp, D_emp_overc, 'C1.', label='D/c DPM')
+plt.xlabel('U [m/s]')
+plt.ylabel('E/c & D/c')
+plt.title(f'Computed Usteady = {Usteady[4]:.2f} m/s')
+plt.legend()
+plt.subplot(1,3,2)
+plt.plot(dU_com, M_drag_overc, color='C0', label='M_drag/c')
+plt.plot(dU_com, M_bed_steady*np.ones_like(dU_com), color='C1', label='M_bed/c')
 # plt.plot(U_emp, E_emp_overc, 'C0.', label='E/c DPM')
 # plt.plot(U_emp, D_emp_overc, 'C1.', label='D/c DPM')
-# plt.xlabel('U [m/s]')
-# plt.ylabel('E/c & D/c')
-# plt.title(f'Computed Usteady = {Usteady:.2f} m/s')
-# plt.legend()
-# plt.figure()
-# plt.plot(dU_com, M_drag_overc, color='C0', label='M_drag/c')
-# plt.plot(dU_com, M_bed_steady*np.ones_like(dU_com), color='C1', label='M_bed/c')
-# # plt.plot(U_emp, E_emp_overc, 'C0.', label='E/c DPM')
-# # plt.plot(U_emp, D_emp_overc, 'C1.', label='D/c DPM')
-# plt.xlabel('0.55Ua - U [m/s]')
-# plt.ylabel('M/c')
-# plt.title(f'Computed Uasteady = {Uasteady:.2f} m/s')
-# plt.legend()
-# plt.figure()
-# plt.plot(c_com, M_drag + tau_bed, color='C0', label='M_drag + tau_bed')
-# plt.plot(c_com, tau_top*np.ones_like(c_com), color='C1', label='tau_top')
-# plt.xlabel(r'$c$ [kg/m$^2$]')
-# plt.ylabel('Source terms in air equation')
-# plt.title(rf'Computed c_steady = {csteady:.4f} kg/m$^2$')
-# plt.legend()
+plt.xlabel('0.55Ua - U [m/s]')
+plt.ylabel('M/c')
+plt.title(f'Computed Uasteady = {Uasteady[4]:.2f} m/s')
+plt.legend()
+plt.subplot(1,3,3)
+plt.plot(c_com, Mdrag_eff_com, color='C0', label=r'$M_{D,eff}$')
+plt.plot(c_com, tau_top*np.ones_like(c_com), color='C1', label='tau_top')
+plt.xlabel(r'$c$ [kg/m$^2$]')
+plt.ylabel('Source/sink in air equation')
+plt.title(rf'Computed c_steady = {csteady[4]:.4f} kg/m$^2$')
+plt.legend()
+plt.suptitle('Shields=0.06')
