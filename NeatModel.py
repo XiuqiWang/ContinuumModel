@@ -163,7 +163,7 @@ def rhs_cmUa(t, y, u_star, eps=1e-16):
     U = m/(c + eps)
 
     Uim, UD = Uim_from_U(U), UD_from_U(U)
-    Tim, TD  = max(1e-9, calc_T_jump_Test(Uim)), max(1e-9, calc_T_jump_Test(UD))
+    Tim, TD  = max(1e-9, calc_T_jump_Test(Uim)), max(1e-9, calc_T_jump_Test(UD)) # changed
     # Pr = np.clip(Preff_of_U(U), 0.0, 1.0)
     Pr = calc_Pr_Xiuqi_paper2(U) # changed
 
@@ -175,7 +175,7 @@ def rhs_cmUa(t, y, u_star, eps=1e-16):
     r_im, r_dep = cim/Tim, cD/TD
 
     # ejection numbers and rebound kinematics
-    NEim, NEd = calc_N_E_test3(Uim), calc_N_E_test3(UD) # changed
+    NEim, NEd = NE_from_Uinc(Uim), NE_from_Uinc(UD) 
     eCOR = e_COR_from_Uim(Uim); Ure = Uim*eCOR
     th_im, th_D, th_re = theta_im_from_Uim(Uim), theta_D_from_UD(UD), theta_reb_from_Uim(Uim)
 
