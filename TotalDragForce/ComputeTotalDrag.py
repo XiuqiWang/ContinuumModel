@@ -14,28 +14,27 @@ from scipy.optimize import fsolve
 import matplotlib.pyplot as plt
 
 ##read flow velocities
-flow_velocities = ReadFlowLog('job_test_4679.log')
+flow_velocities = ReadFlowLog('job_test_4675.log')
 ##read particle data
-data_p = read_data('S006DryLBIni.data', 14, (1,6.01)) #6.01 to have 501 steps
+data_p = read_data('S002DryLBIni.data', 14, (1,6.01)) #6.01 to have 501 steps
 ##read saltation concentration and velocity
-data_CG = np.loadtxt('../Shields006dry.txt')
-C_dpm = data_CG[1:, 1]
-U_dpm = data_CG[1:, 2]
+# data_CG = np.loadtxt('../CGdata/Shields006dry.txt')
+# C_dpm = data_CG[1:, 1]
+# U_dpm = data_CG[1:, 2]
 
 ##calculate the time series of total drag force
 def Calfd(u_air, u_sal, D):
     # Ensure all inputs are numpy arrays
     u_diff = u_air - u_sal
     nu = 1.45e-6  # kinematic viscosity (m²/s)
-    # Prevent divide-by-zero by adding a small epsilon
-    epsilon = 1e-12
-    Re = np.abs(u_diff) * D / nu + epsilon
+    Re = np.abs(u_diff) * D / nu
     C_D = (np.sqrt(0.5) + np.sqrt(24 / Re))**2
-    fd = 0.5 * np.pi / 8 * 1.225 * D**2 * C_D * u_diff * np.abs(u_diff)
+    fd = np.pi / 8 * 1.225 * D**2 * C_D * u_diff * np.abs(u_diff)
     return fd
 
 FD = []
 height_threshold = 12*0.00025
+A = 100 * 0.00025 * 2 * 0.00025
 for t in range(len(flow_velocities)):
     # Get the flow profile at this time
     flow_z = flow_velocities[t][:,0]  # elevations
@@ -50,10 +49,10 @@ for t in range(len(flow_velocities)):
     # Create a mask for particles above the threshold
     mask = z_p >= height_threshold
     FD.append(np.sum(fd[mask]))
-FD = np.array(FD)
+FD = np.array(FD)/A
 
 ##store in a txt file
-np.savetxt("FD_S006dry.txt", FD)
+np.savetxt("FD_S002dry.txt", FD)
 
 ##calculate the time series of representative Uair from FD, Csal and Usal
 # def compute_u_air_from_FD(FD, D_mean, C_sal, u_sal):
