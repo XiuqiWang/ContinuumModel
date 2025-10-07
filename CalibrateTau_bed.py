@@ -43,11 +43,29 @@ def tau_bed_dragform(x, beta, K):
     tau_b_oneminusphib = rho_a * K * c/(rho_sand*D) * abs(Uabed-U) * (Uabed-U) 
     return tau_b_oneminusphib
 
-def MD_eff(x, beta, K):
-    Ua, U, c = x
+def MD_eff(x, beta, K, B, p, CD_bed):
+    Ua, U, c, ustar_i = x
     Uaeff = beta*Ua
     MD_eff = rho_a * K * c/(rho_sand*D) *abs(Uaeff - U) * (Uaeff - U)
-    return MD_eff
+    # tau_basic = rho_a * ustar_i**2 
+    tau_basic = 0.5 * rho_a * CD_bed * Ua * abs(Ua)
+    M_tune = tau_basic * (1/(1+(B*MD_eff)**p))
+    M_final = MD_eff + M_tune
+    return M_final
+
+# def Mairbed(x, Cd_bed):
+#     Ua, U, c = x
+#     # Uaeff = 0.32*Ua
+#     # Urel = Uaeff - U
+#     # Re = Urel*D/nu_a
+#     # Ruc = 24
+#     # Cd_inf = 0.5
+#     # Cd = (np.sqrt(Cd_inf)+np.sqrt(Ruc/Re))**2
+#     # Agrain = np.pi*(D/2)**2
+#     # Mdrag = rho_a * Cd * Agrain * abs(Uaeff - U) * (Uaeff - U) * c/mp
+#     Mbed_air_only = 0.5*rho_a*Ua*abs(Ua)*Cd_bed 
+#     # Msink = Mbed_air_only*(1/(1+(B*Mdrag)**p))
+#     return Mbed_air_only
 
 def BintaubUa(Ua, U, c, RHS, Uabin):
     Ua = np.asarray(Ua, dtype=float)
@@ -116,6 +134,7 @@ CDbed, Ua_c, n = 0.11, 5, 1.75 # for dragform
 Ua_all_S, U_all_S, c_all_S = [], [], []
 RHS_se_all_S, RHS_all_S, LHS_all_S = [], [], []
 Uat_all_S , LHSt_all_S, RHSt_all_S = [], [], []
+duadt_all_S = []
 
 # Loop over conditions S002 to S006
 for i in range(2, 7):
@@ -129,7 +148,7 @@ for i in range(2, 7):
 
     file_fd = f'TotalDragForce/FD_S00{i}dry.txt'
     data_FD = np.loadtxt(file_fd)
-    FD_dpm = data_FD / (100 * D * 2 * D)
+    FD_dpm = data_FD
     
     file_c = f'CGdata/hb=12d/Shields00{i}dry.txt'
     data_dpm = np.loadtxt(file_c)
@@ -138,9 +157,9 @@ for i in range(2, 7):
     phi = c_dpm/(rho_sand*h)
     
     #---- compute RHS-t and binned RHS ----
-    tau_top = np.ones(len(FD_dpm))*rho_a*u_star[i-2]**2
+    tau_top = np.ones(len(dUa_dt))*rho_a*u_star[i-2]**2
     # RHS_t = tau_top-FD_dpm-rho_a * h * (1-phi) * dUa_dt
-    RHS_t = tau_top - rho_a * h * (1-phi) * dUa_dt # combining the tau_bed and MD into one term
+    RHS_t = tau_top - rho_a * h * dUa_dt * (1-phi) # combining the tau_bed and MD into one term
     # RHS_binned, RHS_se, U_binned, c_binned, Ua_binned = BintaubUa(Ua_dpm, U_dpm, c_dpm, RHS_t, Ua_bin)
     
     #----- compute LHS-t with the optimised parameters -----
@@ -152,9 +171,9 @@ for i in range(2, 7):
     U_all_S.append(U_dpm)
     c_all_S.append(c_dpm)
     RHS_all_S.append(RHS_t)
+    duadt_all_S.append(dUa_dt*rho_a * h *(1-phi))
 
 plt.close('all')
-
 
 Ua_all= np.concatenate(Ua_all_S)
 U_all= np.concatenate(U_all_S)
@@ -163,11 +182,12 @@ RHS_all = np.concatenate(RHS_all_S)
 # mask = np.isfinite(Ua_all) & np.isfinite(RHS_all) 
 # Ua_all, RHS_all = Ua_all[mask], RHS_all[mask]
 # U_all, c_all = U_all[mask], c_all[mask]
+u_star_vec = np.repeat(u_star, 501)
 
-popt, _ = curve_fit(MD_eff, (Ua_all, U_all, c_all), RHS_all)
-beta, K = popt
-print('beta', beta, 'K', K)
-RHS_pred = MD_eff((Ua_all, U_all, c_all), beta, K)
+popt, _ = curve_fit(MD_eff, (Ua_all, U_all, c_all, u_star_vec), RHS_all, maxfev=10000)
+beta, K, B, p, CD_bed = popt
+print('beta', beta, 'K', K, 'B', B, 'p', p, 'CD_bed', CD_bed)
+RHS_pred = MD_eff((Ua_all, U_all, c_all, u_star_vec), beta, K, B, p, CD_bed)
 r2 = r2_score(RHS_all, RHS_pred)
 print('r2', r2)
     
@@ -175,14 +195,30 @@ print('r2', r2)
 plt.figure(figsize=(12, 10))
 for i in range(5):
     plt.subplot(3, 2, i + 1)
-    LHS = tau_bed_dragform((Ua_all_S[i], U_all_S[i], c_all_S[i]), beta, K)
+    LHS = MD_eff((Ua_all_S[i], U_all_S[i], c_all_S[i], u_star[i]), beta, K, B, p, CD_bed)
     plt.plot(Ua_all_S[i], RHS_all_S[i], '.', label='DPM')
     plt.plot(Ua_all_S[i], LHS, '.', label='proposed')
     plt.title(f"S00{i+2} Dry")
     plt.xlabel("Ua [m/s]")
-    plt.ylabel(r"$M_{drag,eff}$ [N/m$^2$]")
+    plt.ylabel(r"$M_{D,eff}$ [N/m$^2$]")
     plt.ylim(0,6)
     plt.xlim(0,13.5)
+    plt.grid(True)
+    plt.legend()
+plt.tight_layout()
+plt.show()
+
+plt.figure(figsize=(12, 10))
+for i in range(5):
+    plt.subplot(3, 2, i + 1)
+    LHS = MD_eff((Ua_all_S[i], U_all_S[i], c_all_S[i], u_star[i]), beta, K, B, p, CD_bed)
+    plt.plot(t, RHS_all_S[i], '.', label='DPM')
+    plt.plot(t, LHS, '.', label='proposed')
+    plt.title(f"S00{i+2} Dry")
+    plt.xlabel("t [s]")
+    plt.ylabel(r"$M_{D,eff}$ [N/m$^2$]")
+    plt.ylim(0,6)
+    plt.xlim(-0.1,5.1)
     plt.grid(True)
     plt.legend()
 plt.tight_layout()
