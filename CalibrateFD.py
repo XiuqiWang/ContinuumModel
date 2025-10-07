@@ -158,7 +158,7 @@ for i in range(5):
     plt.xlabel('Ua [m/s]')
     plt.ylabel(r'$f_d$ [N]')
     plt.ylim(0, 4e-7)
-    plt.xlim(0,14)
+    plt.xlim(4,14)
     plt.grid(True)
     plt.legend()
 plt.tight_layout()
