@@ -31,13 +31,9 @@ rho_p  = 2650.0            # particle density [kg/m^3]
 # Particle mass
 mp = rho_p * (np.pi/6.0) * d**3
 
-# Ejection speed magnitude from PDF
-UE_mag = 4.53 * const     
+# Ejection properties
 thetaE_deg = 40.0         
 cos_thetaE = np.cos(np.deg2rad(thetaE_deg))
-
-# Moisture (Ω) for U_im mapping; affects only U_im per PDF
-Omega = 0.0  
 
 # -------------------- closures from the PDF --------------------
 def Uim_from_U(U):
@@ -77,6 +73,7 @@ def Preff_of_U(U):
     # P_min + (P_max-P_min) * (1 - exp(-(U/Uc)^p))
     # Pmin, Pmax, Uc, p = 0, 0.999, 10.038, 0.429 
     Pmin, Pmax, Uc, p = 0, 0.999, 3.84, 0.76 
+    Pmin, Pmax, Uc, p = 0, 0.85, 0.1, 0.2  # try
     # Pmin, Pmax, Uc, p = 0, 0.5934, 2.0939, 0.7368   # tuned for steady solutions
     U = abs(U)
     return Pmin + (Pmax - Pmin)*(1.0 - np.exp(-(U/Uc)**p))  
@@ -86,12 +83,18 @@ def calc_Pr_Xiuqi_paper2(Usal):  # from Xiuqi paper 2
     Pr = 0.94*np.exp(-7.12*np.exp(-0.1*Uinc/np.sqrt(g*d)))
     return Pr
 
-def e_COR_from_Uim(Uim):
-    return 3.05 * (abs(Uim)/const + 1e-12)**(-0.47)       
+def e_COR_from_Uim(Uim, Omega):
+    # return 3.05 * (abs(Uim)/const + 1e-12)**(-0.47)   
+    mu = 312.48
+    sigma = 156.27
+    e = 3.05*(abs(Uim)/const)**(-0.47) + 0.12*np.log(1 + 1061.81*Omega)*np.exp(- (abs(Uim)/const - mu)**2/(2*sigma**2) )    
+    return e
     # return 3.0932 * (abs(Uim)/const + 1e-12)**(-0.4689) # tuned for steady solutions                 
 
-def theta_im_from_Uim(Uim):
-    x = 50.40 / (abs(Uim)/const + 159.33)                            
+def theta_im_from_Uim(Uim, Omega):
+    alpha = 50.40 - 25.53*Omega**0.5 
+    beta = -100.12*(1-np.exp(-2.34*Omega)) + 159.33
+    x = alpha / (abs(Uim)/const + beta)                            
     return np.arcsin(np.clip(x, -1.0, 1.0))
 
 def theta_D_from_UD(UD):
@@ -100,15 +103,17 @@ def theta_D_from_UD(UD):
     theta = 0.28 * np.arcsin(x)
     return np.clip(theta, 0.0, 0.5 * np.pi)                   
 
-def theta_reb_from_Uim(Uim):
-    x = -0.0003*(abs(Uim)/const) + 0.52                              
+def theta_reb_from_Uim(Uim, Omega):
+    x = (-0.0003 - 0.00027*Omega**0.28)*(abs(Uim)/const) + 0.52                              
     return np.arcsin(np.clip(x, -1.0, 1.0))
 
-def NE_from_Uinc(Uinc):
-    return 0.04 * (abs(Uinc)/const)     
+def NE_from_Uinc(Uinc, Omega):
+    # return 0.04 * (abs(Uinc)/const)     
+    return (0.012-0.04*Omega**0.23) * (abs(Uinc)/const) # try
+    # return (0.012-0.012*Omega**0.23) * (abs(Uinc)/const) # try
     # return 0.0635 * (abs(Uinc)/const)   
 
-def calc_N_E_test(Uinc):
+def calc_N_E_test(Uinc, Omega):
        sqrtgd = np.sqrt(g*d)
        # N_E = np.sqrt(Uinc/sqrtgd)*(0.04-0.04*Omega**0.23)*5
        # N_E = (1-(10*Omega+0.2)/(Uinc**2+(10*Omega+0.2)))*np.sqrt(Uinc/sqrtgd)*(0.04-0.04*Omega**0.23)*7
@@ -125,8 +130,8 @@ def calc_N_E_test(Uinc):
        N_E = (1-1./(1.+B*Uinc**p))*2.5 * Uinc**(1/10)
        return N_E 
 
-def calc_N_E_test3(Uinc):
-        N_E_Xiuqi = NE_from_Uinc(Uinc)
+def calc_N_E_test3(Uinc, Omega):
+        N_E_Xiuqi = NE_from_Uinc(Uinc, Omega)
         
         p = 8
         ##
@@ -139,7 +144,16 @@ def calc_N_E_test3(Uinc):
         #Uinc_half = 0.5+40*Omega**0.5
         B = 1/Uinc_half**p
         N_E = (1-1./(1.+B*Uinc**p))*N_E_Xiuqi
-        return N_E                                 
+        return N_E         
+
+def UE_from_Uinc(Uinc, Omega):
+    A = 9.02*Omega + 4.53
+    if Omega>0:
+        B = -0.24*Omega+0.07
+    else:
+        B = 0
+    U_E_im = const*A*(abs(Uinc)/const)**B
+    return U_E_im * np.sign(Uinc)          
 
 # def Ueff_from_Uair(Uair):
 #     """PDF effective air speed in the saltation layer (algebraic log profile)."""
@@ -167,9 +181,11 @@ def tau_top(u_star):
 
 def MD_eff(Ua, U, c):
     alpha, K = 1.20, 0.040
+    alpha, K = 1.18, 0.04 # try
     Uaeff = alpha*Ua
     MD_eff = rho_a * K * c/(rho_p*d) *abs(Uaeff - U) * (Uaeff - U)
     CD_bed = 0.053
+    CD_bed = 0.05 # try
     tau_basic = 0.5 * rho_a * CD_bed * Ua * abs(Ua)
     B, p = 1.07e+25, 0.033
     M_tune = tau_basic * (1/(1+(B*MD_eff)**p)) # to guarantee that there is a balancing term with tau_top when c=0
@@ -179,6 +195,7 @@ def MD_eff(Ua, U, c):
 def calc_Mdrag_geert(c, Uair, U):
     Ngrains = c/mp
     alpha = 0.32
+    alpha = 0.4 # try
     Ueff = alpha*Uair
     Urel = Ueff-U
     Re = abs(Urel)*d/nu_a
@@ -192,7 +209,7 @@ def calc_Mdrag_geert(c, Uair, U):
 
 # --- Calculate rhs of the 3 equations ---
 E_all, D_all = [], []
-def rhs_cmUa(t, y, u_star, eps=1e-16):
+def rhs_cmUa(t, y, u_star, Omega, eps=1e-16):
     c, m, Ua = y
     U = m/(c + eps)
 
@@ -208,9 +225,9 @@ def rhs_cmUa(t, y, u_star, eps=1e-16):
     r_im, r_dep = cim/Tim, cD/TD
 
     # ejection numbers and rebound kinematics
-    NEim, NEd = calc_N_E_test3(Uim), calc_N_E_test3(UD)# changed
-    eCOR = e_COR_from_Uim(Uim); Ure = Uim*eCOR
-    th_im, th_D, th_re = theta_im_from_Uim(Uim), theta_D_from_UD(UD), theta_reb_from_Uim(Uim)
+    NEim, NEd = calc_N_E_test3(Uim, Omega), calc_N_E_test3(UD, Omega)# changed
+    eCOR = e_COR_from_Uim(Uim, Omega); Ure = Uim*eCOR
+    th_im, th_D, th_re = theta_im_from_Uim(Uim, Omega), theta_D_from_UD(UD), theta_reb_from_Uim(Uim, Omega)
 
     # scalar sources
     E = r_im*NEim + r_dep*NEd
@@ -221,7 +238,7 @@ def rhs_cmUa(t, y, u_star, eps=1e-16):
 
     # momentum sources (streamwise)
     M_drag = calc_Mdrag_geert(c, Ua, U) # changed
-    M_eje  = (r_im*NEim + r_dep*NEd) * UE_mag * cos_thetaE
+    M_eje  = r_im*NEim * UE_from_Uinc(Uim, Omega) * cos_thetaE + r_dep*NEd * UE_from_Uinc(UD, Omega) * cos_thetaE
     M_re   = r_im * ( Ure*np.cos(th_re) )
     M_im   = r_im * ( Uim*np.cos(th_im) )
     M_dep  = r_dep* ( UD *np.cos(th_D ) )
@@ -263,7 +280,7 @@ def rhs_cmUa(t, y, u_star, eps=1e-16):
 
     return [dc_dt, dm_dt, dUa_dt]
 # ---------- simple Euler–forward integrator ----------
-def euler_forward(rhs, y0, t_span, dt, u_star):
+def euler_forward(rhs, y0, t_span, dt, u_star, Omega):
     t0, t1 = t_span
     nsteps = int(np.ceil((t1 - t0) / dt))
     t = np.empty(nsteps + 1, dtype=float)
@@ -277,7 +294,7 @@ def euler_forward(rhs, y0, t_span, dt, u_star):
         yk   = y[:,k].copy()
 
         # Euler step
-        f = rhs_cmUa(tk, yk, u_star)
+        f = rhs_cmUa(tk, yk, u_star, Omega)
         y_next = yk + dt * np.asarray(f, dtype=float)
 
         # # minimal safety/projection:
@@ -314,46 +331,64 @@ y0 = (C_dpm[0], C_dpm[0]*U_dpm[0], Ua_dpm[0])
 T0, T1 = 0.0, 5.0
 dt     = 1e-2   
 
-t, Y = euler_forward(rhs_cmUa, y0, (T0, T1), dt, u_star)
+Omega_dry = 0.0
+Omega_wet = 0.01
+
+# dry
+t, Y = euler_forward(rhs_cmUa, y0, (T0, T1), dt, u_star, Omega_dry)
 c  = Y[0]
 m  = Y[1]
 Ua = Y[2]
 U  = m / np.maximum(c, 1e-16)
+# wet
+t, Y_wet = euler_forward(rhs_cmUa, y0, (T0, T1), dt, u_star, Omega_wet)
+c_wet  = Y_wet[0]
+m_wet  = Y_wet[1]
+Ua_wet = Y_wet[2]
+U_wet  = m_wet / np.maximum(c_wet, 1e-16)
 
 # ---------- plot ----------
 plt.close('all')
-plt.figure(figsize=(8,6))
-plt.subplot(3,1,1); plt.plot(t, c,  label='model'); plt.plot(t_dpm, C_dpm,  label='DPM', alpha=0.5)
-plt.ylabel('c'); plt.grid(True); plt.legend()
+plt.figure(figsize=(8,8))
+plt.subplot(4,1,1); plt.plot(t, m,  label='dry'); plt.plot(t, m_wet, label='wet')
+# plt.plot(t_dpm, C_dpm,  label='DPM', alpha=0.5)
+plt.ylabel('Q [kg/m/s]'); plt.grid(True); plt.legend()
 
-plt.subplot(3,1,2); plt.plot(t, U,  label='model'); plt.plot(t_dpm, U_dpm,  label='DPM', alpha=0.5)
+plt.subplot(4,1,2); plt.plot(t, c,  label='dry'); plt.plot(t, c_wet, label='wet')
+# plt.plot(t_dpm, C_dpm,  label='DPM', alpha=0.5)
+plt.ylabel(r'c [kg/m$^2$]'); plt.grid(True); plt.legend()
+
+plt.subplot(4,1,3); plt.plot(t, U,  label='dry'); plt.plot(t, U_wet, label='wet')
+# plt.plot(t_dpm, U_dpm,  label='DPM', alpha=0.5)
 plt.ylabel('U [m/s]'); plt.grid(True); plt.legend()
 
-plt.subplot(3,1,3); plt.plot(t, Ua, label='model'); plt.plot(t_dpm, Ua_dpm, label='DPM', alpha=0.5)
+plt.subplot(4,1,4); plt.plot(t, Ua, label='dry'); plt.plot(t, Ua_wet, label='wet')
+# plt.plot(t_dpm, Ua_dpm, label='DPM', alpha=0.5)
 plt.ylabel('Ua [m/s]'); plt.xlabel('t [s]'); plt.grid(True); plt.legend()
-plt.suptitle('dUadt = (tao_top - Mdrag_eff)/(rho_a h)/(1-c/rho_p h)')
 plt.tight_layout(); plt.show()
 
 
 
-# E and D
-ED = np.loadtxt("dcdt/S006EandD.txt")
-E_dpm = ED[:,0]
-D_dpm = ED[:,1]
-t_dis = np.linspace(0, 5, len(E_dpm))
+# # E and D
+# ED = np.loadtxt("dcdt/S006EandD.txt")
+# E_dpm = ED[:,0]
+# D_dpm = ED[:,1]
+# t_dis = np.linspace(0, 5, len(E_dpm))
     
-plt.figure()
-plt.plot(U[:-1], E_all, '.', label='E')
-plt.plot(U[:-1], D_all, '.', label='D')
-plt.xlabel('U [m/s]')
-plt.ylabel('E & D')
-plt.legend()
+# plt.figure()
+# plt.plot(U[:-1], E_all, '.', label='E')
+# plt.plot(U[:-1], D_all, '.', label='D')
+# plt.xlabel('U [m/s]')
+# plt.ylabel('E & D')
+# plt.title('Shields = 0.06 Dry')
+# plt.legend()
 
-plt.figure()
-plt.plot(t[:-1], E_all, '.', color='C0', label='E')
-plt.plot(t[:-1], D_all, '.', color='C1', label='D')
-plt.plot(t_dis, E_dpm, color='C0', label='E (DPM)')
-plt.plot(t_dis, D_dpm, color='C1', label='D (DPM)')
-plt.xlabel('t [s]')
-plt.ylabel('E & D')
-plt.legend()
+# plt.figure()
+# plt.plot(t[:-1], E_all, '.', color='C0', label='E')
+# plt.plot(t[:-1], D_all, '.', color='C1', label='D')
+# plt.plot(t_dis, E_dpm, color='C0', label='E (DPM)')
+# plt.plot(t_dis, D_dpm, color='C1', label='D (DPM)')
+# plt.title('Shields = 0.06 Dry')
+# plt.xlabel('t [s]')
+# plt.ylabel('E & D')
+# plt.legend()
