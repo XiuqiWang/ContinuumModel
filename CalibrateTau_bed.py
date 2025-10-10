@@ -43,14 +43,21 @@ def tau_bed_dragform(x, beta, K):
     tau_b_oneminusphib = rho_a * K * c/(rho_sand*D) * abs(Uabed-U) * (Uabed-U) 
     return tau_b_oneminusphib
 
-def MD_eff(x, beta, K, B, p, CD_bed):
+def MD_eff(x, B, p):
     Ua, U, c, ustar_i = x
-    Uaeff = beta*Ua
-    MD_eff = rho_a * K * c/(rho_sand*D) *abs(Uaeff - U) * (Uaeff - U)
+    Uaeff = 0.32*Ua
+    Urel = Uaeff - U
+    # MD_eff = rho_a * K * c/(rho_sand*D) *abs(Uaeff - U) * (Uaeff - U)
+    Re = abs(Urel)*D/nu_a
+    Ruc = 24
+    Cd_inf = 0.5
+    Cd = (np.sqrt(Cd_inf)+np.sqrt(Ruc/Re))**2 
+    Mdrag = np.pi/8 * D**2 * rho_a * Urel * abs(Urel) * Cd * c/mp
     # tau_basic = rho_a * ustar_i**2 
+    CD_bed = 0.0037
     tau_basic = 0.5 * rho_a * CD_bed * Ua * abs(Ua)
-    M_tune = tau_basic * (1/(1+(B*MD_eff)**p))
-    M_final = MD_eff + M_tune
+    M_tune = tau_basic * (1/(1+(B*Mdrag)**p))
+    M_final = Mdrag + M_tune
     return M_final
 
 # def Mairbed(x, Cd_bed):
@@ -185,9 +192,9 @@ RHS_all = np.concatenate(RHS_all_S)
 u_star_vec = np.repeat(u_star, 501)
 
 popt, _ = curve_fit(MD_eff, (Ua_all, U_all, c_all, u_star_vec), RHS_all, maxfev=10000)
-beta, K, B, p, CD_bed = popt
-print('beta', beta, 'K', K, 'B', B, 'p', p, 'CD_bed', CD_bed)
-RHS_pred = MD_eff((Ua_all, U_all, c_all, u_star_vec), beta, K, B, p, CD_bed)
+B, p = popt
+print('B', B, 'p', p)
+RHS_pred = MD_eff((Ua_all, U_all, c_all, u_star_vec), B, p)
 r2 = r2_score(RHS_all, RHS_pred)
 print('r2', r2)
     
@@ -195,7 +202,7 @@ print('r2', r2)
 plt.figure(figsize=(12, 10))
 for i in range(5):
     plt.subplot(3, 2, i + 1)
-    LHS = MD_eff((Ua_all_S[i], U_all_S[i], c_all_S[i], u_star[i]), beta, K, B, p, CD_bed)
+    LHS = MD_eff((Ua_all_S[i], U_all_S[i], c_all_S[i], u_star[i]), B, p)
     plt.plot(Ua_all_S[i], RHS_all_S[i], '.', label='DPM')
     plt.plot(Ua_all_S[i], LHS, '.', label='proposed')
     plt.title(f"S00{i+2} Dry")
@@ -208,21 +215,21 @@ for i in range(5):
 plt.tight_layout()
 plt.show()
 
-plt.figure(figsize=(12, 10))
-for i in range(5):
-    plt.subplot(3, 2, i + 1)
-    LHS = MD_eff((Ua_all_S[i], U_all_S[i], c_all_S[i], u_star[i]), beta, K, B, p, CD_bed)
-    plt.plot(t, RHS_all_S[i], '.', label='DPM')
-    plt.plot(t, LHS, '.', label='proposed')
-    plt.title(f"S00{i+2} Dry")
-    plt.xlabel("t [s]")
-    plt.ylabel(r"$M_{D,eff}$ [N/m$^2$]")
-    plt.ylim(0,6)
-    plt.xlim(-0.1,5.1)
-    plt.grid(True)
-    plt.legend()
-plt.tight_layout()
-plt.show()
+# plt.figure(figsize=(12, 10))
+# for i in range(5):
+#     plt.subplot(3, 2, i + 1)
+#     LHS = MD_eff((Ua_all_S[i], U_all_S[i], c_all_S[i], u_star[i]), B, p)
+#     plt.plot(t, RHS_all_S[i], '.', label='DPM')
+#     plt.plot(t, LHS, '.', label='proposed')
+#     plt.title(f"S00{i+2} Dry")
+#     plt.xlabel("t [s]")
+#     plt.ylabel(r"$M_{D,eff}$ [N/m$^2$]")
+#     plt.ylim(0,6)
+#     plt.xlim(-0.1,5.1)
+#     plt.grid(True)
+#     plt.legend()
+# plt.tight_layout()
+# plt.show()
 
 # plt.figure(figsize=(12, 10))
 # for i in range(5):
