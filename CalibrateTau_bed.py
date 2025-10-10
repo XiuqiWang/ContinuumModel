@@ -180,8 +180,6 @@ for i in range(2, 7):
     RHS_all_S.append(RHS_t)
     duadt_all_S.append(dUa_dt*rho_a * h *(1-phi))
 
-plt.close('all')
-
 Ua_all= np.concatenate(Ua_all_S)
 U_all= np.concatenate(U_all_S)
 c_all= np.concatenate(c_all_S)
@@ -214,6 +212,32 @@ for i in range(5):
     plt.legend()
 plt.tight_layout()
 plt.show()
+
+# schematic diagram of Mbed-Mdrag
+def OutputMbed(x, B, p):
+    Ua, U, c, ustar_i = x
+    Uaeff = 0.32*Ua
+    Urel = Uaeff - U
+    # MD_eff = rho_a * K * c/(rho_sand*D) *abs(Uaeff - U) * (Uaeff - U)
+    Re = abs(Urel)*D/nu_a
+    Ruc = 24
+    Cd_inf = 0.5
+    Cd = (np.sqrt(Cd_inf)+np.sqrt(Ruc/Re))**2 
+    Mdrag = np.pi/8 * D**2 * rho_a * Urel * abs(Urel) * Cd * c/mp
+    # tau_basic = rho_a * ustar_i**2 
+    CD_bed = 0.0037
+    tau_basic = 0.5 * rho_a * CD_bed * Ua * abs(Ua)
+    M_tune = tau_basic * (1/(1+(B*Mdrag)**p))
+    return Mdrag, M_tune
+
+c_test = np.linspace(0, 1, 100)
+Ua_test, U_test = 6, 0.5
+Mdrag_test, Mbed_test = OutputMbed([Ua_test, U_test, c_test, 0.56], 4.46, 7.70)
+
+plt.figure()
+plt.plot(Mdrag_test, Mbed_test)
+plt.xlabel(r'$M_{drag}$ [N/m$^2$]')
+plt.ylabel(r'$M_{bed}$ [N/m$^2$]')
 
 # plt.figure(figsize=(12, 10))
 # for i in range(5):
