@@ -63,58 +63,78 @@ def theta_reb_from_Uim(Uim):
     x = -0.0003*(abs(Uim)/const) + 0.52                              
     return np.arcsin(np.clip(x, -1.0, 1.0))
 
-def Mdrag(c, Uair, U):
-    """Momentum exchange (air→saltation): c * f_drag / m_p."""
-    b = 0.55
-    C_D = 0.1037
-    Ueff = b * Uair
-    dU = Ueff - U
-    fdrag = np.pi/8 * rho_a * d**2 * C_D * abs(dU) * dU                     
-    return (c * fdrag) / mp       
-
-def tau_bed(Uair, U, c):                    
-    K = 0.08
-    beta = 0.9
-    U_eff = beta*Uair
-    tau_bed_minusphib = rho_a*K*c/(rho_p*d) * abs(U_eff - U)*(U_eff - U)                            
-    return tau_bed_minusphib
+def calc_Mdrag(Uair, U):
+    alpha_drag = 0.32
+    Ueff = alpha_drag*Uair
+    Urel = Ueff-U
+    Re = abs(Urel)*d/nu_a
+    Ruc = 24
+    Cd_inf = 0.5
+    Cd = (np.sqrt(Cd_inf)+np.sqrt(Ruc/Re))**2
+    
+    Agrain = np.pi*(d/2)**2
+    Mdrag = 0.5*rho_a*Urel*abs(Urel)*Cd*Agrain/mp # drag term based on uniform velocity
+    return Mdrag    
 
 def MD_eff(Ua, U, c):
-    Uaeff = 0.85*Ua
-    MD_eff = rho_a * 0.12 * c/(rho_p*d) *abs(Uaeff - U) * (Uaeff - U)
-    return MD_eff
+    Mdrag = calc_Mdrag(Ua, U) * c # times c here to make it c-dependent
+    CD_bed = 0.0037
+    B, p = 4.46, 7.70
+    tau_basic = 0.5 * rho_a * CD_bed * Ua * abs(Ua)
+    M_bed = tau_basic * (1/(1+(B*Mdrag)**p)) # to guarantee that there is a balancing term with tau_top when c=0
+    M_final = Mdrag + M_bed
+    return M_final
 
 # tuning functions
-def Preff_of_U(U, Pmax, Uc, p):
+def Preff_of_U(U):
     """State-conditioned rebound fraction. PDF marks 'needs calibration'—placeholder Gompertz-like."""
     # P_min + (P_max-P_min) * (1 - exp(-(U/Uc)^p))
-    # Pmin, Pmax, Uc, p = 0, 0.6, 2, 0.5 #1 #3.84, 0.76      # tune to your binned counts
-    Pmin = 0
+    # Pmin, Pmax, Uc, p = 0, 1, 3.84, 0.76      # tune to your binned counts
+    # Pmin = 0
+    Pmin, Pmax, Uc, p = 0, 0.5934, 2.0939, 0.7368   # tuned
     U = abs(U)
     return Pmin + (Pmax - Pmin)*(1.0 - np.exp(-(U/max(Uc,1e-6))**p)) 
 
 def e_COR_from_Uim(Uim):
-    return 3.05 * (abs(Uim)/const + 1e-12)**(-0.47)  
+    # return 3.05 * (abs(Uim)/const + 1e-12)**(-0.47) 
+    return 3.05 * (abs(Uim)/const + 1e-12)**(-0.47) 
 
 def NE_from_Uinc(Uinc):
-    NE = 0.04 * (abs(Uinc)/const)
-    return NE             
+    # NE = 0.04 * (abs(Uinc)/const)
+    NE = 0.04 * (abs(Uinc)/const)      
+    return NE    
+
+def calc_N_E_test3(Uinc):
+    N_E_Xiuqi = NE_from_Uinc(Uinc)
+    
+    p = 8
+    ##
+    p2 = 2
+    A = 100
+    Uinc_half_min = 1.0
+    Uinc_half_max = 2.0
+    Uinc_half = Uinc_half_min + (Uinc_half_max - Uinc_half_min)*(A*Omega)**p2/((A*Omega)**p2+1)
+    ##
+    #Uinc_half = 0.5+40*Omega**0.5
+    B = 1/Uinc_half**p
+    N_E = (1-1./(1.+B*Uinc**p))*N_E_Xiuqi
+    return N_E                  
 
 # helper function
 def Cal_EDM(U):
     # streamwise momentum terms
     Uim = Uim_from_U(U);    UD  = UD_from_U(U)
     if np.ndim(U) != 0:
-        Tim = np.maximum(np.ones_like(U)*1e-6, Tim_from_Uim(Uim))
-        TD  = np.maximum(np.ones_like(U)*1e-6, TD_from_UD(UD))
-        NEim   = np.maximum(np.zeros_like(U), NE_from_Uinc(Uim))
-        NEd    = np.maximum(np.zeros_like(U), NE_from_Uinc(UD))
+        Tim = Tim_from_Uim(Uim)
+        TD  = TD_from_UD(UD)
+        NEim   = NE_from_Uinc(Uim)
+        NEd    = NE_from_Uinc(UD)
     else:
-        Tim = max(1e-6, Tim_from_Uim(Uim))
-        TD  = max(1e-6, TD_from_UD(UD))
-        NEim   = max(0.0, NE_from_Uinc(Uim))
-        NEd    = max(0.0, NE_from_Uinc(UD))
-    P   = np.clip(Preff_of_U(U, 1, 3.84, 0.76), 0.0, 1.0)
+        Tim = Tim_from_Uim(Uim)
+        TD  = TD_from_UD(UD)
+        NEim   = calc_N_E_test3(Uim)
+        NEd    = calc_N_E_test3(UD)
+    P   = Preff_of_U(U)
     # angles/COR (your closures)
     th_im = theta_im_from_Uim(Uim)
     th_D  = theta_D_from_UD(UD)
@@ -122,7 +142,7 @@ def Cal_EDM(U):
     eCOR  = e_COR_from_Uim(Uim)
     Ure   = Uim * eCOR
     
-    phi_im = P * Tim / (P*Tim + (1.0-P)*TD + 1e-12)
+    phi_im = P * Tim / (P*Tim + (1.0-P)*TD)
     phi_D  = 1-phi_im
     E_overc = phi_im/Tim*NEim + phi_D/TD*NEd   
     D_overc = phi_D/TD
@@ -161,7 +181,7 @@ Uas_dpm = np.array([a[int(0.6*len(a)):].mean() for a in Ua_list])
 
 # ------- proposed --------
 U_com = np.linspace(0.01, 2, 100)
-Ua_com = np.linspace(5, 20, 100)
+Ua_com = np.linspace(5, 10, 100)
 c_com = np.linspace(0, 0.1, 100)
 Usteady, Uasteady, csteady = np.zeros(5), np.zeros(5), np.zeros(5)
 for i in range(5):
@@ -170,14 +190,14 @@ for i in range(5):
     Usteady[i] = np.interp(0, E_overc - D_overc, U_com)
     
     # Steady Ua
-    dU_com = 0.55*Ua_com - Usteady[i]
+    dU_com = 0.5842*Ua_com - Usteady[i]
     _,_,M_bed_steady = Cal_EDM(Usteady[i])
-    M_drag_overc = np.pi/8 * d**2 * 0.1037 * abs(dU_com) * dU_com / mp      
+    M_drag_overc = calc_Mdrag(Ua_com, Usteady[i])   
     Uasteady[i] = np.interp(M_bed_steady, M_drag_overc, Ua_com)
     
     # Steady c
-    M_drag_com = Mdrag(c_com, Uasteady[i], Usteady[i])
-    # tau_bed_com = tau_bed(Uasteady[i], Usteady[i], c_com)
+    # M_drag_com = Mdrag(c_com, Uasteady[i], Usteady[i])
+    # # tau_bed_com = tau_bed(Uasteady[i], Usteady[i], c_com)
     Mdrag_eff_com = MD_eff(Uasteady[i], Usteady[i], c_com)
     tau_top = rho_a * u_star[i] **2
     csteady[i] = np.interp(tau_top, Mdrag_eff_com, c_com)
@@ -225,7 +245,7 @@ plt.plot(dU_com, M_drag_overc, color='C0', label='M_drag/c')
 plt.plot(dU_com, M_bed_steady*np.ones_like(dU_com), color='C1', label='M_bed/c')
 # plt.plot(U_emp, E_emp_overc, 'C0.', label='E/c DPM')
 # plt.plot(U_emp, D_emp_overc, 'C1.', label='D/c DPM')
-plt.xlabel('0.55Ua - U [m/s]')
+plt.xlabel('bUa - U [m/s]')
 plt.ylabel('M/c')
 plt.title(f'Computed Uasteady = {Uasteady[4]:.2f} m/s')
 plt.legend()
@@ -237,3 +257,34 @@ plt.ylabel('Source/sink in air equation')
 plt.title(rf'Computed c_steady = {csteady[4]:.4f} kg/m$^2$')
 plt.legend()
 plt.suptitle('Shields=0.06')
+
+plt.figure(figsize=(8,12))
+plt.subplot(4,1,1)
+plt.plot(t_Dis, E_list[4], label='E')
+plt.plot(t_Dis, D_list[4], label='D')
+plt.plot(t_dpm, C_emp, label='C')
+plt.xlabel('t [s]')
+plt.xlim(left=0)
+plt.legend()
+plt.subplot(4,1,2)
+plt.plot(t_dpm, E_emp_overc, label='E/c')
+plt.plot(t_dpm, D_emp_overc, label='D/c')
+plt.xlabel('t [s]')
+plt.ylabel('E/c & D/c')
+plt.legend()
+plt.subplot(4,1,3)
+plt.plot(t_dpm, U_emp)
+plt.xlabel('t [s]')
+plt.ylabel('U [m/s]')
+plt.xlim(left=0)
+plt.legend()
+plt.subplot(4,1,4)
+plt.plot(U_emp, E_emp_overc, label='E/c')
+plt.plot(U_emp, D_emp_overc, label='D/c')
+plt.xlabel('U [m/s]')
+plt.ylabel('E/c & D/c')
+plt.xlim(left=0)
+plt.legend()
+plt.tight_layout()
+
+
