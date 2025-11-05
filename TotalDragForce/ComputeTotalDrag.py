@@ -14,9 +14,9 @@ from scipy.optimize import fsolve
 import matplotlib.pyplot as plt
 
 ##read flow velocities
-flow_velocities = ReadFlowLog('job_test_4675.log')
+flow_velocities = ReadFlowLog('flow/Dry/job_test_4675.log')
 ##read particle data
-data_p = read_data('S002DryLBIni.data', 14, (1,6.01)) #6.01 to have 501 steps
+data_p = read_data('Data/S002DryLBIni.data', 14) 
 ##read saltation concentration and velocity
 # data_CG = np.loadtxt('../CGdata/Shields006dry.txt')
 # C_dpm = data_CG[1:, 1]
@@ -33,7 +33,7 @@ def Calfd(u_air, u_sal, D):
     return fd
 
 FD = []
-height_threshold = 12*0.00025
+height_threshold = 13.5*0.00025
 A = 100 * 0.00025 * 2 * 0.00025
 for t in range(len(flow_velocities)):
     # Get the flow profile at this time
@@ -52,7 +52,7 @@ for t in range(len(flow_velocities)):
 FD = np.array(FD)/A
 
 ##store in a txt file
-np.savetxt("FD_S002dry.txt", FD)
+np.savetxt("FD_S002Dry.txt", FD)
 
 ##calculate the time series of representative Uair from FD, Csal and Usal
 # def compute_u_air_from_FD(FD, D_mean, C_sal, u_sal):

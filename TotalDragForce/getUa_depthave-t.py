@@ -7,10 +7,10 @@ Created on Fri Jul 11 14:23:07 2025
 #read log file and calculate the depth-averaged Uair - t
 import numpy as np
 
-filename = 'job_test_4679.log'
-output_filename = 'Uair_ave-tS006Dryh02.txt'
+filename = 'flow/Dry/job_test_4679.log'
+output_filename = 'Uair_ave-tS006Dry.txt'
 
-z_min = 0.003 #12D
+z_min = 0.00025*13.5 #13.5D
 z_max = 0.2
 lines_per_block = 1600
 
