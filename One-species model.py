@@ -25,8 +25,8 @@ mp = rho_p * (np.pi/6.0) * d**3
 
 # Ejection properties
 thetaE = np.deg2rad(25.0)         
-thetaim = np.deg2rad(12.0)
-thetaD = np.deg2rad(14.0)
+thetaim = np.deg2rad(13.0)
+thetaD = np.deg2rad(13.0)
 
 # -------------------- closures from the PDF --------------------
 def calc_T_jump_ballistic_assumption(Uinc, theta_inc):
@@ -44,10 +44,8 @@ def e_COR_from_Uim(Uim, Omega):
     # return 3.05 * (abs(Uim)/const + 1e-12)**(-0.47)   
     mu = 312.48
     sigma = 156.27
-    if abs(Uim) != 0:
-        e = 3.18*(abs(Uim)/const)**(-0.50) + 0.12*np.log(1 + 1061.81*Omega)*np.exp(- (abs(Uim)/const - mu)**2/(2*sigma**2) )    
-    else:
-        e = 0
+    e_com = 3.18*(abs(Uim)/const)**(-0.50) + 0.12*np.log(1 + 1061.81*Omega)*np.exp(- (abs(Uim)/const - mu)**2/(2*sigma**2) )   
+    e = min(e_com, 1.0)
     return e          
 
 # def theta_im_from_Uim(Uim, Omega):
@@ -137,8 +135,11 @@ def tau_top(u_star):
 #     fdrag = np.pi/8 * d**2 * rho_a * C_D * abs(dU) * dU                     
 #     return (c * fdrag) / mp
 
-def calc_Mdrag(c, Uair, U):
-    alpha_drag = 0.32
+def calc_Mdrag(c, Uair, U, Omega):
+    if Omega == 0:
+        alpha_drag = 0.4 # ?
+    else:
+        alpha_drag = 0.4 # ?
     Ngrains = c/mp
     Ueff = alpha_drag*Uair
     Urel = Ueff-U
@@ -151,12 +152,12 @@ def calc_Mdrag(c, Uair, U):
     Mdrag = 0.5*rho_a*Urel*abs(Urel)*Cd*Agrain*Ngrains # drag term based on uniform velocity
     return Mdrag
 
-def MD_eff(Ua, U, c):
+def MD_eff(Ua, U, c, Omega):
     # _Pmax, _Uc, _pshape, _A_NE, B, p = params
     # alpha, K = 1.20, 0.040
     # Uaeff = alpha*Ua
     # MD_eff = rho_a * K * c/(rho_p*d) *abs(Uaeff - U) * (Uaeff - U)
-    Mdrag = calc_Mdrag(c, Ua, U)
+    Mdrag = calc_Mdrag(c, Ua, U, Omega)
     CD_bed = 0.0037
     B, p = 4.46, 7.70
     tau_basic = 0.5 * rho_a * CD_bed * Ua * abs(Ua)
@@ -171,8 +172,8 @@ def rhs_cmUa(t, y, u_star, Omega, eps=1e-16):
     c, m, Ua = y
     U = m/(c + eps)
 
-    Uim = U/np.cos(thetaim)
-    UD = Uim/3
+    Uim = U*0.7/np.cos(thetaim)
+    UD = Uim#Uim/3
     Tim  = calc_T_jump_ballistic_assumption(Uim, thetaim) 
     Pr = calc_Pr(Uim) 
 
@@ -185,15 +186,15 @@ def rhs_cmUa(t, y, u_star, Omega, eps=1e-16):
     th_re = theta_reb_from_Uim(Uim, Omega)
 
     # scalar sources
-    E = r_im*Pr*NEim 
+    E = r_im*NEim 
     D = r_im*(1-Pr)
     
     if E<0:
             print('E = ',E)
 
     # momentum sources (streamwise)
-    M_drag = calc_Mdrag(c, Ua, U) # changed
-    M_eje  = r_im * Pr * NEim * UE_from_Uinc(Uim, Omega) * np.cos(thetaE)
+    M_drag = calc_Mdrag(c, Ua, U, Omega) # changed
+    M_eje  = E * UE_from_Uinc(Uim, Omega) * np.cos(thetaE)
     M_re   = r_im * Pr * ( Ure*np.cos(th_re) )
     M_im   = r_im * Pr * ( Uim*np.cos(thetaim) )
     M_dep  = D * ( UD*np.cos(thetaD) )
@@ -228,7 +229,7 @@ def rhs_cmUa(t, y, u_star, Omega, eps=1e-16):
 
     phi_term  = 1.0 - c/(rho_p*h)
     m_air_eff = rho_a*h*phi_term
-    dUa_dt    = (tau_top(u_star) - MD_eff(Ua, U, c)) / m_air_eff
+    dUa_dt    = (tau_top(u_star) - MD_eff(Ua, U, c, Omega)) / m_air_eff
     
     E_all.append(E)
     D_all.append(D)
@@ -259,16 +260,23 @@ def euler_forward(rhs, y0, t_span, dt, u_star, Omega):
     return t, y
 
 data = np.loadtxt('CGdata/hb=13.5d/Shields006Dry135d.txt')
-Q_dpm = data[:, 0]
+Q_dpm = data[:, 1]*data[:, 2]
 C_dpm = data[:, 1]
 U_dpm = data[:, 2]
+data_M20 = np.loadtxt('CGdata/hb=13.5d/Shields006M20-135d.txt')
+Q_dpmM20 = data_M20[:, 1]*data_M20[:, 2]
+C_dpmM20 = data_M20[:, 1]
+U_dpmM20 = data_M20[:, 2]
 t_dpm = np.linspace(0.01,5,501)
-data_ua = np.loadtxt('TotalDragForce/Uair_ave-tS006Dryh02.txt', delimiter='\t')
+data_ua = np.loadtxt('TotalDragForce/Ua-t/Uair_ave-tS006Dry.txt', delimiter='\t')
 Ua_dpm = data_ua[0:,1]  
+data_uaM20 = np.loadtxt('TotalDragForce/Ua-t/Uair_ave-tS006M20.txt', delimiter='\t')
+Ua_dpmM20 = data_uaM20[0:,1]  
 
 # ---------- run it ----------
 # initial condition 
 y0 = (C_dpm[0], C_dpm[0]*U_dpm[0], Ua_dpm[0])
+y0_wet = (C_dpmM20[0], C_dpmM20[0]*U_dpmM20[0], Ua_dpmM20[0])
 
 T0, T1 = 0.0, 5.0
 dt     = 1e-2   
@@ -283,28 +291,32 @@ m  = Y[1]
 Ua = Y[2]
 U  = m / np.maximum(c, 1e-16)
 # wet
-t, Y_wet = euler_forward(rhs_cmUa, y0, (T0, T1), dt, u_star, Omega_wet)
+t, Y_wet = euler_forward(rhs_cmUa, y0_wet, (T0, T1), dt, u_star, Omega_wet)
 c_wet  = Y_wet[0]
 m_wet  = Y_wet[1]
 Ua_wet = Y_wet[2]
 U_wet  = m_wet / np.maximum(c_wet, 1e-16)
 
 # ---------- plot ----------
-plt.close('all')
+# plt.close('all')
 plt.figure(figsize=(8,8))
-plt.subplot(4,1,1); plt.plot(t, m,  label='dry'); plt.plot(t, m_wet, label='wet')
-# plt.plot(t_dpm, C_dpm,  label='DPM', alpha=0.5)
+plt.subplot(4,1,1); plt.plot(t, m, color='tab:blue', label='dry'); plt.plot(t, m_wet, color='tab:orange', label=r'$\Omega$=20$\%$')
+plt.plot(t_dpm, Q_dpm,  '--', color='tab:blue', label='dry DPM'); plt.plot(t_dpm, Q_dpmM20,  '--', color='tab:orange', label='M20 DPM')
 plt.ylabel('Q [kg/m/s]'); plt.grid(True); plt.legend()
 
-plt.subplot(4,1,2); plt.plot(t, c,  label='dry'); plt.plot(t, c_wet, label='wet')
-# plt.plot(t_dpm, C_dpm,  label='DPM', alpha=0.5)
+plt.subplot(4,1,2); plt.plot(t, c,  label='dry'); plt.plot(t, c_wet, label=r'$\Omega$=20$\%$')
+plt.plot(t_dpm, C_dpm,  '--', color='tab:blue', label='dry DPM'); plt.plot(t_dpm, C_dpmM20,  '--', color='tab:orange', label='M20 DPM')
 plt.ylabel(r'c [kg/m$^2$]'); plt.grid(True); plt.legend()
 
-plt.subplot(4,1,3); plt.plot(t, U,  label='dry'); plt.plot(t, U_wet, label='wet')
-# plt.plot(t_dpm, U_dpm,  label='DPM', alpha=0.5)
+plt.subplot(4,1,3); plt.plot(t, U,  label='dry'); plt.plot(t, U_wet, label=r'$\Omega$=20$\%$')
+plt.plot(t_dpm, U_dpm,  '--', color='tab:blue', label='dry DPM'); plt.plot(t_dpm, U_dpmM20,  '--', color='tab:orange', label='M20 DPM')
 plt.ylabel('U [m/s]'); plt.grid(True); plt.legend()
 
-plt.subplot(4,1,4); plt.plot(t, Ua, label='dry'); plt.plot(t, Ua_wet, label='wet')
-# plt.plot(t_dpm, Ua_dpm, label='DPM', alpha=0.5)
+plt.subplot(4,1,4); plt.plot(t, Ua, label='dry'); plt.plot(t, Ua_wet, label=r'$\Omega$=20$\%$')
+plt.plot(t_dpm, Ua_dpm,  '--', color='tab:blue', label='dry DPM'); plt.plot(t_dpm, Ua_dpmM20,  '--', color='tab:orange', label='M20 DPM')
 plt.ylabel('Ua [m/s]'); plt.xlabel('t [s]'); plt.grid(True); plt.legend()
+
+for ax in plt.gcf().axes:
+    ax.set_ylim(bottom=0)
+    
 plt.tight_layout(); plt.show()
