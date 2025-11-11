@@ -112,15 +112,14 @@ Ua_bin = np.linspace(0, 13, 21)
 C_all_S, U_all_S, Ua_all_S, MD_all_S, fd_ori, fd_ori_se, fd_com = [], [], [], [], [], [], []
 for i in range(2, 7):
     # ---- Load data ----
-    file_fd = f'TotalDragForce/Mdrag/FD_S00{i}M20.txt'
+    file_fd = f'TotalDragForce/Mdrag/FD_S00{i}Dry.txt'
     data_FD = np.loadtxt(file_fd)
     MD = data_FD
-    file_c = f'CGdata/hb=13.5d/Shields00{i}M20-135d.txt'
+    file_c = f'CGdata/hb=13.5d/Shields00{i}Dry-135d.txt'
     data_dpm = np.loadtxt(file_c)
-    Q_dpm = data_dpm[:, 0]
     C_dpm = data_dpm[:, 1]
     U_dpm = data_dpm[:, 2]
-    file_ua = f'TotalDragForce/Ua-t/Uair_ave-tS00{i}M20.txt'
+    file_ua = f'TotalDragForce/Ua-t/Uair_ave-tS00{i}Dry.txt'
     Ua_dpm = np.loadtxt(file_ua, delimiter='\t')[:, 1]
     
     # binning Ua and getting the mean of RHS
@@ -142,14 +141,16 @@ fd_all = np.concatenate(fd_ori)
 mask = np.isfinite(U_all) & np.isfinite(Ua_all) & np.isfinite(C_all) & np.isfinite(fd_all) 
 U_all, Ua_all, C_all, fd_all = U_all[mask], Ua_all[mask], C_all[mask], fd_all[mask]
 
-popt, _ = curve_fit(drag_model_ori, (Ua_all, U_all, C_all), fd_all, absolute_sigma=True, maxfev=20000)
-b_ua, b_u = popt
-print(f'b_ua={b_ua:.4f}, b_u={b_u:.4f}')
-# print(f'CD={CD:.2f}')
+# popt, _ = curve_fit(drag_model_ori, (Ua_all, U_all, C_all), fd_all, absolute_sigma=True, maxfev=20000)
+# b_ua, b_u = popt
+# print(f'b_ua={b_ua:.4f}, b_u={b_u:.4f}')
 
-fd_pred = drag_model_ori((Ua_all, U_all, C_all), b_ua, b_u)
-r2 = r2_score(fd_all, fd_pred)
-print('r2', r2)
+# fd_pred = drag_model_ori((Ua_all, U_all, C_all), b_ua, b_u)
+# r2 = r2_score(fd_all, fd_pred)
+# print('r2', r2)
+
+# b_ua, b_u = 0.30, 0.40
+# b_ua, b_u = 0.40, 0.30
 
 plt.close('all')
 plt.figure(figsize=(10, 8))
@@ -158,14 +159,13 @@ for i in range(5):
     fd_com = drag_model_ori((Ua_all_S[i], U_all_S[i], C_all_S[i]), b_ua, b_u)
     plt.plot(Ua_all_S[i], fd_ori[i], 'o', label='DPM')
     plt.plot(Ua_all_S[i], fd_com, 'o', label='fit')
-    plt.title(f"S00{i+2} M20")
+    plt.title(f"S00{i+2} Dry")
     plt.xlabel('Ua [m/s]')
     plt.ylabel(r'$f_d$ [N]')
     plt.ylim(0, 4e-7)
     plt.xlim(4,14)
     plt.grid(True)
     plt.legend()
-plt.suptitle('b=alpha*sqrt(1-c/(c+c_s)')
 plt.tight_layout()
 plt.show()
 
@@ -198,3 +198,12 @@ plt.show()
 #     plt.legend()
 # plt.tight_layout()
 # plt.show()
+
+# Omega = [0, 0.01, 0.05, 0.1, 0.2]
+# plt.figure()
+# plt.plot(Omega, [0.30, 0.40, 0.39, 0.40, 0.43], 'o')
+# plt.xlabel(r'$\Omega$');plt.ylabel(r'$b_{Ua}$')
+
+# plt.figure()
+# plt.plot(Omega, [0.40, 0.33, 0.26, 0.26, 0.33], 'o')
+# plt.xlabel(r'$\Omega$');plt.ylabel(r'$b_{U}$')
