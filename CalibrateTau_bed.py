@@ -14,7 +14,7 @@ import pandas as pd
 from scipy.signal import savgol_filter
 
 # from FD to Ua; Calibrate h dUa/dt = Mom_gain - Mom_loss - Mom_drag
-h = 0.2 - 0.00025*12
+h = 0.2 - 0.00025*13.5
 D = 0.00025
 kappa = 0.4
 # CD_air = 8e-3
@@ -45,20 +45,36 @@ def tau_bed_dragform(x, beta, K):
 
 def MD_eff(x, B, p):
     Ua, U, c, ustar_i = x
-    Uaeff = 0.32*Ua
-    Urel = Uaeff - U
+    Urel = Cal_Urel(Ua, U, Omega)
     # MD_eff = rho_a * K * c/(rho_sand*D) *abs(Uaeff - U) * (Uaeff - U)
     Re = abs(Urel)*D/nu_a
     Ruc = 24
     Cd_inf = 0.5
     Cd = (np.sqrt(Cd_inf)+np.sqrt(Ruc/Re))**2 
     Mdrag = np.pi/8 * D**2 * rho_a * Urel * abs(Urel) * Cd * c/mp
-    # tau_basic = rho_a * ustar_i**2 
+    
+    tau_basic = rho_a * ustar_i**2 
     CD_bed = 0.0037
     tau_basic = 0.5 * rho_a * CD_bed * Ua * abs(Ua)
     M_tune = tau_basic * (1/(1+(B*Mdrag)**p))
     M_final = Mdrag + M_tune
-    return M_final
+    return M_final#, Mdrag, M_tune
+
+def Cal_Urel(Ua, U, Omega):
+    if Omega == 0:
+        b_Ua = 0.30
+        b_U = 0.40
+    else:
+        b_Ua = 0.40
+        b_U = 0.30
+    Urel = b_Ua*Ua - b_U*U
+    return Urel
+
+# def Cal_Mdrag(x, b, CD):
+#     Ua, U = x
+#     ueff = b*Ua
+#     U_rel = ueff - U
+#     return np.pi*D**2/8 * rho_a * CD * np.abs(U_rel) * U_rel  
 
 # def Mairbed(x, Cd_bed):
 #     Ua, U, c = x
@@ -74,69 +90,13 @@ def MD_eff(x, B, p):
 #     # Msink = Mbed_air_only*(1/(1+(B*Mdrag)**p))
 #     return Mbed_air_only
 
-def BintaubUa(Ua, U, c, RHS, Uabin):
-    Ua = np.asarray(Ua, dtype=float)
-    RHS = np.asarray(RHS, dtype=float)
-    edges = np.asarray(Uabin, dtype=float)
-
-    if Ua.shape != RHS.shape:
-        raise ValueError("Ua and RHS must have the same shape.")
-    if edges.ndim != 1 or edges.size < 2:
-        raise ValueError("Uabin must be a 1D array of length >= 2 (bin edges).")
-    if not np.all(np.diff(edges) > 0):
-        raise ValueError("Uabin must be strictly increasing.")
-
-    # keep only finite pairs
-    m = np.isfinite(Ua) & np.isfinite(RHS)
-    Ua = Ua[m]
-    RHS = RHS[m]
-
-    nbins = edges.size - 1
-    RHS_mean   = np.full(nbins, np.nan, dtype=float)
-    RHS_se     = np.full(nbins, np.nan, dtype=float)
-    Ua_mean  = np.full(nbins, np.nan, dtype=float)
-    U_mean     = np.full(nbins, np.nan, dtype=float)
-    c_mean     = np.full(nbins, np.nan, dtype=float)
-
-    for i in range(nbins):
-        lo, hi = edges[i], edges[i+1]
-        # right-inclusive on the last bin
-        if i < nbins - 1:
-            sel = (Ua >= lo) & (Ua < hi)
-        else:
-            sel = (Ua >= lo) & (Ua <= hi)
-
-        if not np.any(sel):
-            continue
-
-        RHS_i = RHS[sel]
-        Ua_i = Ua[sel]
-        U_i, c_i = U[sel], c[sel]
-        n = RHS_i.size
-
-        RHS_mean[i] = np.mean(RHS_i)
-        if n > 1:
-            sd = np.std(RHS_i, ddof=1)
-            se = sd / np.sqrt(n)
-            RHS_se[i] = np.nan if se == 0 else se
-        else:
-            RHS_se[i] = np.nan
-
-        Ua_mean[i] = np.mean(Ua_i)
-        U_mean[i]  = np.mean(U_i)
-        c_mean[i]  = np.mean(c_i)
-    return RHS_mean, RHS_se, U_mean, c_mean, Ua_mean
-
 def weighted_r2(y_true, y_pred, weights):
     y_avg = np.average(y_true, weights=weights)
     ss_res = np.sum(weights * (y_true - y_pred)**2)
     ss_tot = np.sum(weights * (y_true - y_avg)**2)
     return 1 - ss_res / ss_tot
 
-l_eff = 0.025
-phi_b = 0.4
 Ua_bin = np.linspace(0, 13, 31)
-CDbed, Ua_c, n = 0.11, 5, 1.75 # for dragform
 # Containers for storing results
 Ua_all_S, U_all_S, c_all_S = [], [], []
 RHS_se_all_S, RHS_all_S, LHS_all_S = [], [], []
@@ -148,16 +108,16 @@ for i in range(2, 7):
     shields_val = i * 0.01  # Convert index to Shields value
     
     # ---- Load data ----
-    file_ua = f'TotalDragForce/Uair_ave-tS00{i}Dryh02.txt'
+    file_ua = f'TotalDragForce/Ua-t/Uair_ave-tS00{i}M20.txt'
     Ua_dpm = np.loadtxt(file_ua, delimiter='\t')[:, 1]
     Ua0 = Ua_dpm[0]
     dUa_dt = np.gradient(Ua_dpm, dt) 
 
-    file_fd = f'TotalDragForce/FD_S00{i}dry.txt'
-    data_FD = np.loadtxt(file_fd)
-    FD_dpm = data_FD
+    # file_fd = f'TotalDragForce/Mdrag/FD_S00{i}Dry.txt'
+    # data_FD = np.loadtxt(file_fd)
+    # FD_dpm = data_FD
     
-    file_c = f'CGdata/hb=12d/Shields00{i}dry.txt'
+    file_c = f'CGdata/hb=13.5d/Shields00{i}M20-135d.txt'
     data_dpm = np.loadtxt(file_c)
     c_dpm = data_dpm[:, 1]
     U_dpm = data_dpm[:, 2]
@@ -189,55 +149,51 @@ RHS_all = np.concatenate(RHS_all_S)
 # U_all, c_all = U_all[mask], c_all[mask]
 u_star_vec = np.repeat(u_star, 501)
 
-popt, _ = curve_fit(MD_eff, (Ua_all, U_all, c_all, u_star_vec), RHS_all, maxfev=10000)
-B, p = popt
-print('B', B, 'p', p)
-RHS_pred = MD_eff((Ua_all, U_all, c_all, u_star_vec), B, p)
-r2 = r2_score(RHS_all, RHS_pred)
-print('r2', r2)
+Omega = 0.2
+# popt, _ = curve_fit(MD_eff, (Ua_all, U_all, c_all, u_star_vec), RHS_all, maxfev=10000)
+# B, p = popt
+# print('B', B, 'p', p)
+# RHS_pred = MD_eff((Ua_all, U_all, c_all, u_star_vec), B, p)
+# r2 = r2_score(RHS_all, RHS_pred)
+# print('r2', r2)
     
 # ---- Plotting ----
+B, p = 3.5, 7.0
+
+plt.close('all')
 plt.figure(figsize=(12, 10))
 for i in range(5):
     plt.subplot(3, 2, i + 1)
     LHS = MD_eff((Ua_all_S[i], U_all_S[i], c_all_S[i], u_star[i]), B, p)
     plt.plot(Ua_all_S[i], RHS_all_S[i], '.', label='DPM')
     plt.plot(Ua_all_S[i], LHS, '.', label='proposed')
-    plt.title(f"S00{i+2} Dry")
+    plt.title(f"S00{i+2} $\Omega$={Omega*100}$\%$")
     plt.xlabel("Ua [m/s]")
     plt.ylabel(r"$M_{D,eff}$ [N/m$^2$]")
     plt.ylim(0,6)
     plt.xlim(0,13.5)
     plt.grid(True)
     plt.legend()
+plt.suptitle(f"B={B:.2f}, p={p:.2f}")
 plt.tight_layout()
 plt.show()
 
-# schematic diagram of Mbed-Mdrag
-def OutputMbed(x, B, p):
-    Ua, U, c, ustar_i = x
-    Uaeff = 0.32*Ua
-    Urel = Uaeff - U
-    # MD_eff = rho_a * K * c/(rho_sand*D) *abs(Uaeff - U) * (Uaeff - U)
-    Re = abs(Urel)*D/nu_a
-    Ruc = 24
-    Cd_inf = 0.5
-    Cd = (np.sqrt(Cd_inf)+np.sqrt(Ruc/Re))**2 
-    Mdrag = np.pi/8 * D**2 * rho_a * Urel * abs(Urel) * Cd * c/mp
-    # tau_basic = rho_a * ustar_i**2 
-    CD_bed = 0.0037
-    tau_basic = 0.5 * rho_a * CD_bed * Ua * abs(Ua)
-    M_tune = tau_basic * (1/(1+(B*Mdrag)**p))
-    return Mdrag, M_tune
-
-c_test = np.linspace(0, 1, 100)
-Ua_test, U_test = 6, 0.5
-Mdrag_test, Mbed_test = OutputMbed([Ua_test, U_test, c_test, 0.56], 4.46, 7.70)
-
-plt.figure()
-plt.plot(Mdrag_test, Mbed_test)
-plt.xlabel(r'$M_{drag}$ [N/m$^2$]')
-plt.ylabel(r'$M_{bed}$ [N/m$^2$]')
+# plt.figure(figsize=(12, 10))
+# for i in range(5):
+#     plt.subplot(3, 2, i + 1)
+#     M, Mdrag_i, Mtune_i = MD_eff((Ua_all_S[i], U_all_S[i], c_all_S[i], u_star[i]), B, p)
+#     # plt.plot(Ua_all_S[i], RHS_all_S[i], '.', label='DPM')
+#     plt.plot(Ua_all_S[i], Mdrag_i, '.', label='Mdrag')
+#     plt.plot(Ua_all_S[i], Mtune_i, '.', label='Mtune')
+#     plt.title(f"S00{i+2} $\Omega$={Omega*100}$\%$")
+#     plt.xlabel("Ua [m/s]")
+#     plt.ylabel(r"$M_{D,eff}$ [N/m$^2$]")
+#     plt.ylim(0,2)
+#     plt.xlim(0,13.5)
+#     plt.grid(True)
+#     plt.legend()
+# plt.tight_layout()
+# plt.show()
 
 # plt.figure(figsize=(12, 10))
 # for i in range(5):
@@ -282,3 +238,56 @@ plt.ylabel(r'$M_{bed}$ [N/m$^2$]')
 # plt.grid(True)
 # plt.legend()
 # plt.tight_layout()
+
+# def BintaubUa(Ua, U, c, RHS, Uabin):
+#     Ua = np.asarray(Ua, dtype=float)
+#     RHS = np.asarray(RHS, dtype=float)
+#     edges = np.asarray(Uabin, dtype=float)
+
+#     if Ua.shape != RHS.shape:
+#         raise ValueError("Ua and RHS must have the same shape.")
+#     if edges.ndim != 1 or edges.size < 2:
+#         raise ValueError("Uabin must be a 1D array of length >= 2 (bin edges).")
+#     if not np.all(np.diff(edges) > 0):
+#         raise ValueError("Uabin must be strictly increasing.")
+
+#     # keep only finite pairs
+#     m = np.isfinite(Ua) & np.isfinite(RHS)
+#     Ua = Ua[m]
+#     RHS = RHS[m]
+
+#     nbins = edges.size - 1
+#     RHS_mean   = np.full(nbins, np.nan, dtype=float)
+#     RHS_se     = np.full(nbins, np.nan, dtype=float)
+#     Ua_mean  = np.full(nbins, np.nan, dtype=float)
+#     U_mean     = np.full(nbins, np.nan, dtype=float)
+#     c_mean     = np.full(nbins, np.nan, dtype=float)
+
+#     for i in range(nbins):
+#         lo, hi = edges[i], edges[i+1]
+#         # right-inclusive on the last bin
+#         if i < nbins - 1:
+#             sel = (Ua >= lo) & (Ua < hi)
+#         else:
+#             sel = (Ua >= lo) & (Ua <= hi)
+
+#         if not np.any(sel):
+#             continue
+
+#         RHS_i = RHS[sel]
+#         Ua_i = Ua[sel]
+#         U_i, c_i = U[sel], c[sel]
+#         n = RHS_i.size
+
+#         RHS_mean[i] = np.mean(RHS_i)
+#         if n > 1:
+#             sd = np.std(RHS_i, ddof=1)
+#             se = sd / np.sqrt(n)
+#             RHS_se[i] = np.nan if se == 0 else se
+#         else:
+#             RHS_se[i] = np.nan
+
+#         Ua_mean[i] = np.mean(Ua_i)
+#         U_mean[i]  = np.mean(U_i)
+#         c_mean[i]  = np.mean(c_i)
+#     return RHS_mean, RHS_se, U_mean, c_mean, Ua_mean
