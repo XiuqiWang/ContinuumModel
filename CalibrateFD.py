@@ -29,18 +29,14 @@ def drag_model(x, b, CD):
     U_rel = ueff - U
     return np.pi*D**2/8 * rho_air * CD * np.abs(U_rel) * U_rel  
 
-def drag_model_ori(x, b_Ua, b_U):
+def drag_model_ori(x, Cref, b_Ua):
     Ua, U, c = x
-    # z0 = D/30
-    # b = np.log(z1/z0) / ((0.2*np.log(0.2/z0) - 0.2 - (13.5*D*np.log(13.5*30) - 13.5*D)) / (0.2-13.5*D))
-    # print(f'b={b:.4f}')
-    Ueff = b_Ua * Ua #* np.sqrt(1-c/(c+c_s)) 
-    Urel = Ueff - U * b_U 
+    b_urel = 1/(1 + c/Cref)
+    Urel = b_urel*(b_Ua * Ua - U)
     Re = abs(Urel)*D/nu_a
     Ruc = 24
     Cd_inf = 0.5
     Cd = (np.sqrt(Cd_inf)+np.sqrt(Ruc/Re))**2   
-    # print('Cd=',Cd)
     fdrag = np.pi/8 * D**2 * rho_air * Urel * abs(Urel) * Cd
     return fdrag
 
@@ -108,66 +104,64 @@ def r2_score(y, ypred):
     ss_tot = np.sum((y - np.mean(y))**2)
     return 1.0 - ss_res/ss_tot
 
-Ua_bin = np.linspace(0, 13, 21)
 C_all_S, U_all_S, Ua_all_S, MD_all_S, fd_ori, fd_ori_se, fd_com = [], [], [], [], [], [], []
-for i in range(2, 7):
+omega_labels = ['Dry', 'M1', 'M5', 'M10', 'M20']
     # ---- Load data ----
-    file_fd = f'TotalDragForce/Mdrag/FD_S00{i}Dry.txt'
-    data_FD = np.loadtxt(file_fd)
-    MD = data_FD
-    file_c = f'CGdata/hb=13.5d/Shields00{i}Dry-135d.txt'
-    data_dpm = np.loadtxt(file_c)
-    C_dpm = data_dpm[:, 1]
-    U_dpm = data_dpm[:, 2]
-    file_ua = f'TotalDragForce/Ua-t/Uair_ave-tS00{i}Dry.txt'
-    Ua_dpm = np.loadtxt(file_ua, delimiter='\t')[:, 1]
-    
-    # binning Ua and getting the mean of RHS
-    fd_dpm = MD*mp/C_dpm
-    # fd_dpm_binned, fd_dpm_se, U_dpm_binned, Ua_dpm_binned = BinfdUa(Ua_dpm, fd_dpm, U_dpm, Ua_bin)
-    
-    # Combine
-    U_all_S.append(U_dpm)
-    Ua_all_S.append(Ua_dpm)
-    C_all_S.append(C_dpm)
-    fd_ori.append(fd_dpm)
-    # fd_ori_se.append(fd_dpm_se)
+for label in omega_labels:
+    for i in range(2, 7):
+        file_fd = f'TotalDragForce/Mdrag/FD_S00{i}{label}.txt'
+        data_FD = np.loadtxt(file_fd)
+        MD = data_FD
+        file_path = f'CGdata/hb=13.5d/Shields00{i}{label}-135d.txt'
+        data_dpm = np.loadtxt(file_path)
+        C_dpm = data_dpm[:, 1]
+        U_dpm = data_dpm[:, 2]
+        file_ua = f'TotalDragForce/Ua-t/Uair_ave-tS00{i}{label}.txt'
+        Ua_dpm = np.loadtxt(file_ua, delimiter='\t')[:, 1]
+        
+        # binning Ua and getting the mean of RHS
+        fd_dpm = MD*mp/C_dpm
+        
+        # Combine
+        U_all_S.append(U_dpm)
+        Ua_all_S.append(Ua_dpm)
+        C_all_S.append(C_dpm)
+        fd_ori.append(fd_dpm)
 
 U_all = np.concatenate(U_all_S)
 Ua_all = np.concatenate(Ua_all_S)
 C_all = np.concatenate(C_all_S)
 fd_all = np.concatenate(fd_ori)
-# fd_se_all = np.concatenate(fd_ori_se)
 mask = np.isfinite(U_all) & np.isfinite(Ua_all) & np.isfinite(C_all) & np.isfinite(fd_all) 
 U_all, Ua_all, C_all, fd_all = U_all[mask], Ua_all[mask], C_all[mask], fd_all[mask]
 
-# popt, _ = curve_fit(drag_model_ori, (Ua_all, U_all, C_all), fd_all, absolute_sigma=True, maxfev=20000)
-# b_ua, b_u = popt
-# print(f'b_ua={b_ua:.4f}, b_u={b_u:.4f}')
+popt, _ = curve_fit(drag_model_ori, (Ua_all, U_all, C_all), fd_all, absolute_sigma=True, maxfev=20000)
+Cref, b_ua = popt
+print(f'Cref={Cref:.2f}, b_ua={b_ua:.4f}')
 
-# fd_pred = drag_model_ori((Ua_all, U_all, C_all), b_ua, b_u)
-# r2 = r2_score(fd_all, fd_pred)
-# print('r2', r2)
-
-# b_ua, b_u = 0.30, 0.40
-# b_ua, b_u = 0.40, 0.30
+fd_pred = drag_model_ori((Ua_all, U_all, C_all), Cref, b_ua)
+r2 = r2_score(fd_all, fd_pred)
+print('r2', r2)
 
 plt.close('all')
-plt.figure(figsize=(10, 8))
-for i in range(5):
-    plt.subplot(3, 2, i + 1)
-    fd_com = drag_model_ori((Ua_all_S[i], U_all_S[i], C_all_S[i]), b_ua, b_u)
-    plt.plot(Ua_all_S[i], fd_ori[i], 'o', label='DPM')
-    plt.plot(Ua_all_S[i], fd_com, 'o', label='fit')
-    plt.title(f"S00{i+2} Dry")
-    plt.xlabel('Ua [m/s]')
-    plt.ylabel(r'$f_d$ [N]')
-    plt.ylim(0, 4e-7)
-    plt.xlim(4,14)
-    plt.grid(True)
-    plt.legend()
-plt.tight_layout()
-plt.show()
+
+for i in range(5): #Omega
+    plt.figure(figsize=(10, 8))
+    for j in range(5): #Shields
+        plt.subplot(3, 2, j+1)
+        index_byS = i*5+j 
+        fd_com = drag_model_ori((Ua_all_S[index_byS], U_all_S[index_byS], C_all_S[index_byS]), Cref, b_ua)
+        plt.plot(Ua_all_S[index_byS], fd_ori[index_byS], 'o', label='DPM')
+        plt.plot(Ua_all_S[index_byS], fd_com, 'o', label='fit')
+        plt.title(f"S00{j+2} {omega_labels[i]}")
+        plt.xlabel('Ua [m/s]')
+        plt.ylabel(r'$f_d$ [N]')
+        plt.ylim(0, 4e-7)
+        plt.xlim(4,14)
+        plt.grid(True)
+        plt.legend()
+    plt.tight_layout()
+    plt.show()
 
 # plt.figure(figsize=(10, 8))
 # for i in range(5):
