@@ -15,7 +15,9 @@ g = 9.81
 d = 0.00025                # grain diameter [m]  
 const = np.sqrt(g*d)       # √(g d)
 h = 0.197                 # domain height [m]
-u_star = 0.56              # shear velocity [m/s]
+Shields = np.linspace(0.02, 0.06, 5)
+ustar_list = np.sqrt(Shields * (2650-1.225)*9.81*d/1.225)
+Omega_list = [0.0, 0.01, 0.05, 0.10, 0.20]
 
 rho_a  = 1.225             # air density [kg/m^3] 
 nu_a   = 1.46e-5           # air kinematic viscosity [m^2/s]
@@ -24,6 +26,8 @@ rho_p  = 2650.0            # particle density [kg/m^3]
 # Particle mass
 mp = rho_p * (np.pi/6.0) * d**3         
 thetaE = np.deg2rad(25)
+
+colors = plt.cm.viridis(np.linspace(1, 0, 5))  # 5 colors
 
 # -------------------- closures from the PDF --------------------
 def CalUincfromU(U, Omega):
@@ -85,8 +89,8 @@ def UE_from_Uinc(Uinc, Omega):
 def tau_top(u_star):                                                 
     return rho_a * u_star**2     
 
-def calc_Mdrag(c, Uair, U, Omega, Cref, b):
-    b_Urel = 1/(1 + c/Cref)
+def calc_Mdrag(c, Uair, U, Omega, alpha, Cref, b):
+    b_Urel = 1/(1 + alpha*c/Cref)
     Urel = b_Urel * (b*Uair - U)
     Re = abs(Urel)*d/nu_a
     Ruc = 24
@@ -97,8 +101,8 @@ def calc_Mdrag(c, Uair, U, Omega, Cref, b):
     Mdrag = 0.5*rho_a*Urel*abs(Urel)*Cd*Agrain*Ngrains
     return Mdrag
 
-def MD_eff(Ua, U, c, Omega):
-    Mdrag = calc_Mdrag(c, Ua, U, Omega)
+def MD_eff(Ua, U, c, Omega, alpha, Cref, b):
+    Mdrag = calc_Mdrag(c, Ua, U, Omega, alpha, Cref, b)
     CD_bed = 0.0037
     B, p = 3.5, 7.0
     tau_basic = 0.5 * rho_a * CD_bed * Ua * abs(Ua)
@@ -106,7 +110,7 @@ def MD_eff(Ua, U, c, Omega):
     M_final = Mdrag + M_bed
     return M_final
 
-def rhs_cmUa(t, y, u_star, Omega, Cref, b):
+def rhs_cmUa(t, y, u_star, Omega, alpha, Cref, b):
     eps=1e-16
     c, m, Ua = y
     U = m/(c + eps)
@@ -133,7 +137,7 @@ def rhs_cmUa(t, y, u_star, Omega, Cref, b):
             print('E = ',E)
 
     # momentum sources (streamwise)
-    M_drag = calc_Mdrag(c, Ua, U, Omega, Cref, b) 
+    M_drag = calc_Mdrag(c, Ua, U, Omega, alpha, Cref, b) 
     M_eje  = E * UE * np.cos(thetaE)
     M_re   = r_im * Pr * Ure*np.cos(th_re) 
     M_im   = r_im * Pr * Uinc*np.cos(thetainc) 
@@ -169,11 +173,11 @@ def rhs_cmUa(t, y, u_star, Omega, Cref, b):
 
     phi_term  = 1.0 - c/(rho_p*h)
     m_air_eff = rho_a*h*phi_term
-    dUa_dt    = (tau_top(u_star) - MD_eff(Ua, U, c, Omega)) / m_air_eff
+    dUa_dt    = (tau_top(u_star) - MD_eff(Ua, U, c, Omega, alpha, Cref, b)) / m_air_eff
 
     return [dc_dt, dm_dt, dUa_dt]
 
-def euler_forward(rhs, y0, t_span, dt, u_star, Omega, Cref, b):
+def euler_forward(rhs, y0, t_span, dt, u_star, Omega, alpha, Cref, b):
     t0, t1 = t_span
     nsteps = int(np.ceil((t1 - t0) / dt))
     t = np.empty(nsteps + 1, dtype=float)
@@ -187,7 +191,7 @@ def euler_forward(rhs, y0, t_span, dt, u_star, Omega, Cref, b):
         yk   = y[:,k].copy()
 
         # Euler step
-        f = rhs_cmUa(tk, yk, u_star, Omega, Cref, b)
+        f = rhs_cmUa(tk, yk, u_star, Omega, alpha, Cref, b)
         y_next = yk + dt * np.asarray(f, dtype=float)
 
         t[k+1]   = min(tk + dt, t1)
@@ -221,61 +225,116 @@ for label in omega_labels:
         Ua = data_ua[:, 1]
         Ua_dpm.append(Ua)
 
-def simulate_model(Cref, b):
-    Omega_list = [0.0, 0.01, 0.05, 0.10, 0.20]
+def simulate_model(alpha, Cref, b):
 
-    model_output = {}
+    model_output = {Omega: {} for Omega in Omega_list}
 
     for i, Omega in enumerate(Omega_list):
-        y0 = (C_dpm[i][0], C_dpm[i][0]*U_dpm[i][0], Ua_dpm[i][0])
-        t, Y = euler_forward(rhs_cmUa, y0, (0.0, 5.0), 1e-2, u_star, Omega, Cref, b)
-
-        c  = Y[0]
-        m  = Y[1]
-        Ua = Y[2]
-        U  = m / np.maximum(c, 1e-16)
-
-        model_output[Omega] = {
-            't': t,
-            'c': c,
-            'U': U,
-            'Ua': Ua
-        }
+        for j, ustar in enumerate(ustar_list):
+            index = i*5+j
+            y0 = (C_dpm[index][0], C_dpm[index][0]*U_dpm[index][0], Ua_dpm[index][0])
+            t, Y = euler_forward(rhs_cmUa, y0, (0.0, 5.0), 1e-2, ustar, Omega, alpha, Cref, b)
+    
+            c  = Y[0]
+            m  = Y[1]
+            Ua = Y[2]
+            U  = m / np.maximum(c, 1e-16)
+    
+            model_output[Omega][ustar] = {
+                'c': c,
+                'U': U,
+                'Ua': Ua
+            }
 
     return model_output
 
 def cost_function(params):
-    Cref, b = params
-    model = simulate_model(Cref, b)
+    alpha, Cref, b = params
+    model = simulate_model(alpha, Cref, b)
 
     cost = 0.0
     
-    for i, Omega in enumerate([0.0, 0.01, 0.05, 0.10, 0.20]):
-        # measured
-        C_meas = C_dpm[i]
-        U_meas = U_dpm[i]
-        Ua_meas = Ua_dpm[i]
-
-        # model
-        c_mod  = model[Omega]['c'][:len(C_meas)]
-        U_mod  = model[Omega]['U'][:len(U_meas)]
-        Ua_mod = model[Omega]['Ua'][:len(Ua_meas)]
-
-        # squared error
-        cost += np.sum((c_mod - C_meas)**2)
-        cost += np.sum((U_mod - U_meas)**2)
-        cost += np.sum((Ua_mod - Ua_meas)**2)
+    for i, Omega in enumerate(Omega_list):
+        for j, ustar in enumerate(ustar_list):
+            index = i*5+j
+            # measured
+            C_meas = C_dpm[index]
+            U_meas = U_dpm[index]
+            Ua_meas = Ua_dpm[index]
+    
+            # model
+            c_mod  = model[Omega][ustar]['c'][:len(C_meas)]
+            U_mod  = model[Omega][ustar]['U'][:len(U_meas)]
+            Ua_mod = model[Omega][ustar]['Ua'][:len(Ua_meas)]
+    
+            # squared error
+            cost += np.sum((c_mod - C_meas)**2)
+            cost += np.sum((U_mod - U_meas)**2)
+            cost += np.sum((Ua_mod - Ua_meas)**2)
 
     return cost
 
-# 参数的初始猜测
-x0 = [0.02, 0.6]   # example: Cref=0.02, b=0.6
-
-# 给参数加约束 (Cref>0, 0<b<1)
-bounds = [(1e-6, None), (0.1, 1.0)]
+# initial guess
+x0 = [0.5, 0.09, 0.6]   # alpha, Cref, b
+bounds = [(1e-6, 1.0), (1e-6, 1.0), (0.01, 1.0)]
 
 res = minimize(cost_function, x0, bounds=bounds, method='L-BFGS-B')
 
 print("Optimized parameters:")
-print("Cref =", res.x[0])
-print("b    =", res.x[1])
+print("alpha, ", res.x[0])
+print("Cref =", res.x[1])
+print("b    =", res.x[2])
+
+model_run = simulate_model(res.x[0], res.x[1], res.x[2])
+t_mod = np.linspace(0, 5, 501)
+
+plt.close('all')
+for ui, ustar in enumerate(ustar_list):
+
+    fig, axes = plt.subplots(3, 1, figsize=(7, 10), sharex=True)
+    axC, axU, axUa = axes
+
+    for oi, Omega in enumerate(Omega_list):
+
+        # measured data index: i*5 + j
+        idx = oi*len(ustar_list) + ui
+        
+        # measured
+        C_meas  = C_dpm[idx]
+        U_meas  = U_dpm[idx]
+        Ua_meas = Ua_dpm[idx]
+        t_meas  = np.linspace(0, 5, len(C_meas))
+
+        # model
+        C_mod   = model_run[Omega][ustar]['c']
+        U_mod   = model_run[Omega][ustar]['U']
+        Ua_mod  = model_run[Omega][ustar]['Ua']
+
+        label = f'Ω={Omega}'
+
+        # --- Plot C ---
+        axC.plot(t_mod, C_mod, color=colors[oi], label=f'{label} – model')
+        axC.plot(t_meas, C_meas, '--', color=colors[oi], label=f'{label} – data')
+
+        # --- Plot U ---
+        axU.plot(t_mod, U_mod, color=colors[oi])
+        axU.plot(t_meas, U_meas, '--', color=colors[oi])
+
+        # --- Plot Ua ---
+        axUa.plot(t_mod, Ua_mod, color=colors[oi])
+        axUa.plot(t_meas, Ua_meas, '--', color=colors[oi])
+
+    axC.set_ylabel('C [kg/m²]')
+    axC.set_title(fr'$\Theta$ = {Shields[ui]:.2f}')
+    axC.grid(True)
+    axC.legend(fontsize=8)
+
+    axU.set_ylabel('U [m/s]')
+    axU.grid(True)
+
+    axUa.set_ylabel('Ua [m/s]')
+    axUa.set_xlabel('t [s]')
+    axUa.grid(True)
+
+    plt.tight_layout()
+    plt.show()
