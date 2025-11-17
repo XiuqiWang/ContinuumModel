@@ -14,8 +14,8 @@ from scipy.optimize import minimize
 g = 9.81
 d = 0.00025                # grain diameter [m]  
 const = np.sqrt(g*d)       # √(g d)
-h = 0.197                 # domain height [m]
-Shields = np.linspace(0.02, 0.06, 5)
+h = 0.2 - 13.5*d           # domain height [m] 
+Shields = np.linspace(0.03, 0.06, 4)
 ustar_list = np.sqrt(Shields * (2650-1.225)*9.81*d/1.225)
 Omega_list = [0.0, 0.01, 0.05, 0.10, 0.20]
 
@@ -45,13 +45,12 @@ def calc_T_jump_ballistic_assumption(Uinc, theta_inc):
     return Tjump 
 
 def calc_Pr(Uinc):
-    Pr = 0.74*np.exp(-4.46*np.exp(-0.1*Uinc/const))
-    # if Pr <0 or Pr>1:
-    #     print('Warning: Pr is not between 0 and 1')
+    Pr = 0.74*np.exp(-3.66*np.exp(-0.10*Uinc/const))
+    if Pr <0 or Pr>1:
+        print('Warning: Pr is not between 0 and 1')
     return Pr
 
 def e_COR_from_Uim(Uim, Omega):
-    # return 3.05 * (abs(Uim)/const + 1e-12)**(-0.47)   
     mu = 312.48
     sigma = 156.27
     e_com = 3.18*(abs(Uim)/const)**(-0.50) + 0.12*np.log(1 + 1061.81*Omega)*np.exp(- (abs(Uim)/const - mu)**2/(2*sigma**2) )   
@@ -63,8 +62,8 @@ def theta_inc_from_Uinc(Uinc, Omega):
     beta = -260.77 * Omega + 248.51
     x = alpha / (abs(Uinc)/const + beta)  
     theta_inc = np.arcsin(x)
-    # if theta_inc < 0 or theta_inc > np.pi / 2: 
-    #     print('The value of theta_inc is not logical')                                     
+    if theta_inc < 0 or theta_inc > np.pi / 2: 
+        print('The value of theta_inc is not logical')                                     
     return theta_inc
 
 def theta_reb_from_Uim(Uim, Omega):
@@ -75,23 +74,22 @@ def theta_reb_from_Uim(Uim, Omega):
     return theta_re
 
 def NE_from_Uinc(Uinc, Omega): 
-    return (0.03-0.025*Omega**0.21) * (abs(Uinc)/const) 
+    return (0.03-0.028*Omega**0.19) * (abs(Uinc)/const) 
 
 def UE_from_Uinc(Uinc, Omega):
-    A = -1.51*Omega + 4.62
-    if Omega>0:
-        B = 0.56*Omega+0.15
-    else:
-        B = 0
+    A = -2.13*Omega + 4.60
+    B = 0.40*Omega**0.24 + 0.008
     U_E = A*(abs(Uinc)/const)**B * const
     return U_E * np.sign(Uinc)  
 
 def tau_top(u_star):                                                 
     return rho_a * u_star**2     
 
-def calc_Mdrag(c, Uair, U, Omega, alpha, Cref, b):
-    b_Urel = 1/(1 + alpha*c/Cref)
-    Urel = b_Urel * (b*Uair - U)
+def calc_Mdrag(c, Uair, U, Omega, params):
+    Cref, Cref_urel, B, p = params
+    b = np.sqrt(1 - c/(c+Cref))
+    b_urel = 1/np.sqrt(1 + c/Cref_urel)
+    Urel = b_urel * (b*Uair - U)
     Re = abs(Urel)*d/nu_a
     Ruc = 24
     Cd_inf = 0.5
@@ -101,16 +99,17 @@ def calc_Mdrag(c, Uair, U, Omega, alpha, Cref, b):
     Mdrag = 0.5*rho_a*Urel*abs(Urel)*Cd*Agrain*Ngrains
     return Mdrag
 
-def MD_eff(Ua, U, c, Omega, alpha, Cref, b):
-    Mdrag = calc_Mdrag(c, Ua, U, Omega, alpha, Cref, b)
+def MD_eff(Ua, U, c, Omega, params):
+    Cref, Cref_urel, B, p = params
+    Mdrag = calc_Mdrag(c, Ua, U, Omega, params)
     CD_bed = 0.0037
-    B, p = 3.5, 7.0
+    # B, p = 3.5, 7.0
     tau_basic = 0.5 * rho_a * CD_bed * Ua * abs(Ua)
     M_bed = tau_basic * (1/(1+(B*Mdrag)**p)) # to guarantee that there is a balancing term with tau_top when c=0
     M_final = Mdrag + M_bed
     return M_final
 
-def rhs_cmUa(t, y, u_star, Omega, alpha, Cref, b):
+def rhs_cmUa(t, y, u_star, Omega, params):
     eps=1e-16
     c, m, Ua = y
     U = m/(c + eps)
@@ -137,7 +136,7 @@ def rhs_cmUa(t, y, u_star, Omega, alpha, Cref, b):
             print('E = ',E)
 
     # momentum sources (streamwise)
-    M_drag = calc_Mdrag(c, Ua, U, Omega, alpha, Cref, b) 
+    M_drag = calc_Mdrag(c, Ua, U, Omega, params) 
     M_eje  = E * UE * np.cos(thetaE)
     M_re   = r_im * Pr * Ure*np.cos(th_re) 
     M_im   = r_im * Pr * Uinc*np.cos(thetainc) 
@@ -173,11 +172,11 @@ def rhs_cmUa(t, y, u_star, Omega, alpha, Cref, b):
 
     phi_term  = 1.0 - c/(rho_p*h)
     m_air_eff = rho_a*h*phi_term
-    dUa_dt    = (tau_top(u_star) - MD_eff(Ua, U, c, Omega, alpha, Cref, b)) / m_air_eff
+    dUa_dt    = (tau_top(u_star) - MD_eff(Ua, U, c, Omega, params)) / m_air_eff
 
     return [dc_dt, dm_dt, dUa_dt]
 
-def euler_forward(rhs, y0, t_span, dt, u_star, Omega, alpha, Cref, b):
+def euler_forward(rhs, y0, t_span, dt, u_star, Omega, params):
     t0, t1 = t_span
     nsteps = int(np.ceil((t1 - t0) / dt))
     t = np.empty(nsteps + 1, dtype=float)
@@ -191,7 +190,7 @@ def euler_forward(rhs, y0, t_span, dt, u_star, Omega, alpha, Cref, b):
         yk   = y[:,k].copy()
 
         # Euler step
-        f = rhs_cmUa(tk, yk, u_star, Omega, alpha, Cref, b)
+        f = rhs_cmUa(tk, yk, u_star, Omega, params)
         y_next = yk + dt * np.asarray(f, dtype=float)
 
         t[k+1]   = min(tk + dt, t1)
@@ -208,7 +207,7 @@ Ua_dpm = []
 
 # Loop over all moisture levels
 for label in omega_labels:
-    for i in range(2, 7):
+    for i in range(3, 7):
         # --- Load sediment transport data ---
         file_path = f'CGdata/hb=13.5d/Shields00{i}{label}-135d.txt'
         data = np.loadtxt(file_path)
@@ -225,15 +224,15 @@ for label in omega_labels:
         Ua = data_ua[:, 1]
         Ua_dpm.append(Ua)
 
-def simulate_model(alpha, Cref, b):
+def simulate_model(params):
 
     model_output = {Omega: {} for Omega in Omega_list}
 
     for i, Omega in enumerate(Omega_list):
         for j, ustar in enumerate(ustar_list):
-            index = i*5+j
+            index = i*4+j
             y0 = (C_dpm[index][0], C_dpm[index][0]*U_dpm[index][0], Ua_dpm[index][0])
-            t, Y = euler_forward(rhs_cmUa, y0, (0.0, 5.0), 1e-2, ustar, Omega, alpha, Cref, b)
+            t, Y = euler_forward(rhs_cmUa, y0, (0.0, 5.0), 1e-2, ustar, Omega, params)
     
             c  = Y[0]
             m  = Y[1]
@@ -249,14 +248,13 @@ def simulate_model(alpha, Cref, b):
     return model_output
 
 def cost_function(params):
-    alpha, Cref, b = params
-    model = simulate_model(alpha, Cref, b)
+    model = simulate_model(params)
 
     cost = 0.0
     
     for i, Omega in enumerate(Omega_list):
         for j, ustar in enumerate(ustar_list):
-            index = i*5+j
+            index = i*4+j
             # measured
             C_meas = C_dpm[index]
             U_meas = U_dpm[index]
@@ -275,17 +273,17 @@ def cost_function(params):
     return cost
 
 # initial guess
-x0 = [0.5, 0.09, 0.6]   # alpha, Cref, b
-bounds = [(1e-6, 1.0), (1e-6, 1.0), (0.01, 1.0)]
+x0 = [0.05, 0.05, 3.5, 7.0]
+bounds = [(1e-6, 1.0), (1e-6, 1.0), (1e-6, None), (1e-6, None)]
 
 res = minimize(cost_function, x0, bounds=bounds, method='L-BFGS-B')
 
-print("Optimized parameters:")
-print("alpha, ", res.x[0])
-print("Cref =", res.x[1])
-print("b    =", res.x[2])
+param_names = ["Cref", "Cref_urel", "B", "p"]
 
-model_run = simulate_model(res.x[0], res.x[1], res.x[2])
+for name, value in zip(param_names, res.x):
+    print(f"{name:>6} = {value:.6f}")
+
+model_run = simulate_model(res.x)
 t_mod = np.linspace(0, 5, 501)
 
 plt.close('all')
@@ -327,13 +325,16 @@ for ui, ustar in enumerate(ustar_list):
     axC.set_ylabel('C [kg/m²]')
     axC.set_title(fr'$\Theta$ = {Shields[ui]:.2f}')
     axC.grid(True)
+    axC.set_ylim(0, 0.30)
     axC.legend(fontsize=8)
 
     axU.set_ylabel('U [m/s]')
+    axU.set_ylim(0, 9.5)
     axU.grid(True)
 
     axUa.set_ylabel('Ua [m/s]')
     axUa.set_xlabel('t [s]')
+    axUa.set_ylim(0, 13.5)
     axUa.grid(True)
 
     plt.tight_layout()
