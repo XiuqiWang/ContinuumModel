@@ -25,18 +25,24 @@ rho_p  = 2650.0            # particle density [kg/m^3]
 
 # Particle mass
 mp = rho_p * (np.pi/6.0) * d**3         
-thetaE = np.deg2rad(25)
+thetaE = np.deg2rad(24)
 
 colors = plt.cm.viridis(np.linspace(1, 0, 5))  # 5 colors
 
 # -------------------- closures from the PDF --------------------
 def CalUincfromU(U, Omega):
-    if Omega == 0:
-        # Uinc = 0.43*U
-        Uinc = 0.61*U**0.44
-    else:
-        # Uinc = 0.85*U
-        Uinc = 0.44*U**1.36
+    Cref, Cref_urel, B, p = 1.0, 0.0088, 9.52, 18.05 
+    a0, b0 = 0.92, 0.58
+    a1, b1 = 0.01, 0.99
+    # if Omega == 0:
+    #     # Uinc = 0.43*U
+    #     Uinc = 0.61*U**0.44
+    # else:
+    #     # Uinc = 0.85*U
+    #     Uinc = 0.44*U**1.36
+    A = a0 - a1*Omega
+    n = b0 + b1*Omega
+    Uinc = A*U**n
     return Uinc
 
 def calc_T_jump_ballistic_assumption(Uinc, theta_inc):
@@ -74,7 +80,10 @@ def theta_reb_from_Uim(Uim, Omega):
     return theta_re
 
 def NE_from_Uinc(Uinc, Omega): 
-    return (0.03-0.028*Omega**0.19) * (abs(Uinc)/const) 
+    NE = (0.03-0.028*Omega**0.19) * (abs(Uinc)/const) 
+    # ane, bne = params 
+    # NE = ane * (abs(Uinc)/const) ** bne
+    return NE
 
 def UE_from_Uinc(Uinc, Omega):
     A = -2.13*Omega + 4.60
@@ -85,8 +94,8 @@ def UE_from_Uinc(Uinc, Omega):
 def tau_top(u_star):                                                 
     return rho_a * u_star**2     
 
-def calc_Mdrag(c, Uair, U, Omega, params):
-    Cref, Cref_urel, B, p = params
+def calc_Mdrag(c, Uair, U, Omega):
+    Cref, Cref_urel, B, p = 1.0, 0.0088, 9.52, 18.05
     b = np.sqrt(1 - c/(c+Cref))
     b_urel = 1/np.sqrt(1 + c/Cref_urel)
     Urel = b_urel * (b*Uair - U)
@@ -100,21 +109,23 @@ def calc_Mdrag(c, Uair, U, Omega, params):
     return Mdrag
 
 def MD_eff(Ua, U, c, Omega, params):
-    Cref, Cref_urel, B, p = params
-    Mdrag = calc_Mdrag(c, Ua, U, Omega, params)
+    gamma = params
+    Cref, Cref_urel, B, p = 1.0, 0.0088, 9.52, 18.05
+    Mdrag = calc_Mdrag(c, Ua, U, Omega)
     CD_bed = 0.0037
     # B, p = 3.5, 7.0
     tau_basic = 0.5 * rho_a * CD_bed * Ua * abs(Ua)
     M_bed = tau_basic * (1/(1+(B*Mdrag)**p)) # to guarantee that there is a balancing term with tau_top when c=0
-    M_final = Mdrag + M_bed
+    M_final = gamma * Mdrag + M_bed
     return M_final
 
+MDeff_all = []
 def rhs_cmUa(t, y, u_star, Omega, params):
     eps=1e-16
     c, m, Ua = y
     U = m/(c + eps)
 
-    Uinc = 0.5*U#CalUincfromU(U, Omega)
+    Uinc = CalUincfromU(U, Omega)
     thetainc = theta_inc_from_Uinc(Uinc, Omega)
     Tim  = calc_T_jump_ballistic_assumption(Uinc, thetainc) + eps
     Pr = calc_Pr(Uinc) 
@@ -136,7 +147,7 @@ def rhs_cmUa(t, y, u_star, Omega, params):
             print('E = ',E)
 
     # momentum sources (streamwise)
-    M_drag = calc_Mdrag(c, Ua, U, Omega, params) 
+    M_drag = calc_Mdrag(c, Ua, U, Omega) 
     M_eje  = E * UE * np.cos(thetaE)
     M_re   = r_im * Pr * Ure*np.cos(th_re) 
     M_im   = r_im * Pr * Uinc*np.cos(thetainc) 
@@ -172,7 +183,8 @@ def rhs_cmUa(t, y, u_star, Omega, params):
 
     phi_term  = 1.0 - c/(rho_p*h)
     m_air_eff = rho_a*h*phi_term
-    dUa_dt    = (tau_top(u_star) - MD_eff(Ua, U, c, Omega, params)) / m_air_eff
+    Mdrageff = MD_eff(Ua, U, c, Omega, params)
+    dUa_dt    = (tau_top(u_star) - Mdrageff) / m_air_eff
 
     return [dc_dt, dm_dt, dUa_dt]
 
@@ -184,14 +196,19 @@ def euler_forward(rhs, y0, t_span, dt, u_star, Omega, params):
 
     t[0]   = t0
     y[:,0] = np.asarray(y0, dtype=float)
-
+    
+    # Mdrag_eff_list = []
     for k in range(nsteps):
         tk   = t[k]
         yk   = y[:,k].copy()
 
         # Euler step
-        f = rhs_cmUa(tk, yk, u_star, Omega, params)
+        rhs_out = rhs_cmUa(tk, yk, u_star, Omega, params)
+        f = rhs_out
         y_next = yk + dt * np.asarray(f, dtype=float)
+        
+        # Mdrageff = rhs_out[-1]
+        # Mdrag_eff_list.append(Mdrageff)
 
         t[k+1]   = min(tk + dt, t1)
         y[:,k+1] = y_next
@@ -242,7 +259,7 @@ def simulate_model(params):
             model_output[Omega][ustar] = {
                 'c': c,
                 'U': U,
-                'Ua': Ua
+                'Ua': Ua,
             }
 
     return model_output
@@ -252,33 +269,34 @@ def cost_function(params):
 
     cost = 0.0
     
-    for i, Omega in enumerate(Omega_list):
-        for j, ustar in enumerate(ustar_list):
-            index = i*4+j
-            # measured
-            C_meas = C_dpm[index]
-            U_meas = U_dpm[index]
-            Ua_meas = Ua_dpm[index]
-    
-            # model
-            c_mod  = model[Omega][ustar]['c'][:len(C_meas)]
-            U_mod  = model[Omega][ustar]['U'][:len(U_meas)]
-            Ua_mod = model[Omega][ustar]['Ua'][:len(Ua_meas)]
-    
-            # squared error
-            cost += np.sum((c_mod - C_meas)**2)
-            cost += np.sum((U_mod - U_meas)**2)
-            cost += np.sum((Ua_mod - Ua_meas)**2)
+    # for i, Omega in enumerate(Omega_list):
+    i, Omega = 0, 0.0
+    for j, ustar in enumerate(ustar_list):
+        index = i*4+j
+        # measured
+        C_meas = C_dpm[index]
+        U_meas = U_dpm[index]
+        Ua_meas = Ua_dpm[index]
+
+        # model
+        c_mod  = model[Omega][ustar]['c'][:len(C_meas)]
+        U_mod  = model[Omega][ustar]['U'][:len(U_meas)]
+        Ua_mod = model[Omega][ustar]['Ua'][:len(Ua_meas)]
+
+        # squared error
+        cost += np.sum((c_mod - C_meas)**2)
+        cost += np.sum((U_mod - U_meas)**2)
+        cost += np.sum((Ua_mod - Ua_meas)**2)
 
     return cost
 
 # initial guess
-x0 = [0.05, 0.05, 3.5, 7.0]
-bounds = [(1e-6, 1.0), (1e-6, 1.0), (1e-6, None), (1e-6, None)]
+x0 = [0.7]#[0.05, 0.05, 3.5, 7.0, 0.50, 1.0]
+bounds = [(0.01, 1.0)]#[(1e-6, 1.0), (1e-6, 1.0), (1e-6, None), (1e-6, None), (0.01, 1.0), (0.01, 2.0)]
 
 res = minimize(cost_function, x0, bounds=bounds, method='L-BFGS-B')
 
-param_names = ["Cref", "Cref_urel", "B", "p"]
+param_names = ["gamma"]
 
 for name, value in zip(param_names, res.x):
     print(f"{name:>6} = {value:.6f}")
@@ -339,3 +357,19 @@ for ui, ustar in enumerate(ustar_list):
 
     plt.tight_layout()
     plt.show()
+    
+# plt.figure()
+# for i in range(4):
+#     plt.plot(t_mod, ustar_list[i]*np.ones(len(t_mod)))
+#     plt.plot(t_mod[:-1], model_run[0][ustar_list[i]]['Mdrag_eff'])
+# plt.xlabel('t')
+# plt.ylabel('balance between tau_top and Mdrag,eff')
+
+# # steady C
+# mean_last100_c = []
+
+# for Omega in model_run:
+#     for ustar in model_run[Omega]:
+#         c_array = model_run[Omega][ustar]['c']
+#         mean_last100 = np.mean(c_array[-100:])
+#         mean_last100_c.append(mean_last100)
