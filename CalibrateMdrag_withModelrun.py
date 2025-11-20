@@ -30,18 +30,22 @@ thetaE = np.deg2rad(24)
 colors = plt.cm.viridis(np.linspace(1, 0, 5))  # 5 colors
 
 # -------------------- closures from the PDF --------------------
-def CalUincfromU(U, Omega):
+def CalUincfromU(U, c, Omega):
     Cref, Cref_urel, B, p = 1.0, 0.0088, 9.52, 18.05 
+    # a1, b1 = 0.01, 0.99
     a0, b0 = 0.92, 0.58
-    a1, b1 = 0.01, 0.99
+    a1, b1 = 0,0
+    # A = a0 + a1*Omega
+    # n = b0 + b1*Omega
     # if Omega == 0:
     #     # Uinc = 0.43*U
     #     Uinc = 0.61*U**0.44
     # else:
     #     # Uinc = 0.85*U
     #     Uinc = 0.44*U**1.36
-    A = a0 - a1*Omega
-    n = b0 + b1*Omega
+    Cref_Uinc, Cref_Uinc_n = 0.20, 0.05
+    A = 1/np.sqrt(1 + c/Cref_Uinc)
+    n = 1/np.sqrt(1 + c/Cref_Uinc_n)
     Uinc = A*U**n
     return Uinc
 
@@ -50,11 +54,24 @@ def calc_T_jump_ballistic_assumption(Uinc, theta_inc):
     Tjump = 2*Uy0/g
     return Tjump 
 
-def calc_Pr(Uinc):
-    Pr = 0.74*np.exp(-3.66*np.exp(-0.10*Uinc/const))
-    if Pr <0 or Pr>1:
-        print('Warning: Pr is not between 0 and 1')
+def calc_Pr(Uinc, Omega, params):
+    kA, kB = 0, 0 #params
+    # A0 = 0.74
+    # B0 = 3.66
+    A0, B0, _ = params
+    A = A0 * (1.0 + kA * Omega)
+    B = B0 * (1.0 + kB * Omega)
+    # ensure A <= 1 for all Omega <= 0.2
+    A = min(A, 0.999)
+    Pr = A*np.exp(-B*np.exp(-0.10*Uinc/const))
     return Pr
+
+# Uinc = np.linspace(0, 5, 100)
+# Pr = calc_Pr(Uinc, 0, 0.5, 0.5)
+# Pr_wet = calc_Pr(Uinc, 0.2, 0.5, 0.5)
+# plt.figure()
+# plt.plot(Uinc, Pr)
+# plt.plot(Uinc, Pr_wet)
 
 def e_COR_from_Uim(Uim, Omega):
     mu = 312.48
@@ -79,10 +96,10 @@ def theta_reb_from_Uim(Uim, Omega):
         print('The value of theta_re is not logical')                              
     return theta_re
 
-def NE_from_Uinc(Uinc, Omega): 
-    NE = (0.03-0.028*Omega**0.19) * (abs(Uinc)/const) 
-    # ane, bne = params 
-    # NE = ane * (abs(Uinc)/const) ** bne
+def NE_from_Uinc(Uinc, Omega, params): 
+    _, _, a_ne = params
+    # NE = (0.03-0.028*Omega**0.19) * (abs(Uinc)/const) 
+    NE = a_ne * (abs(Uinc)/const) 
     return NE
 
 def UE_from_Uinc(Uinc, Omega):
@@ -94,7 +111,7 @@ def UE_from_Uinc(Uinc, Omega):
 def tau_top(u_star):                                                 
     return rho_a * u_star**2     
 
-def calc_Mdrag(c, Uair, U, Omega):
+def calc_Mdrag(c, Uair, U, Omega, params):
     Cref, Cref_urel, B, p = 1.0, 0.0088, 9.52, 18.05
     b = np.sqrt(1 - c/(c+Cref))
     b_urel = 1/np.sqrt(1 + c/Cref_urel)
@@ -109,45 +126,44 @@ def calc_Mdrag(c, Uair, U, Omega):
     return Mdrag
 
 def MD_eff(Ua, U, c, Omega, params):
-    gamma = params
     Cref, Cref_urel, B, p = 1.0, 0.0088, 9.52, 18.05
-    Mdrag = calc_Mdrag(c, Ua, U, Omega)
+    Mdrag = calc_Mdrag(c, Ua, U, Omega, params)
     CD_bed = 0.0037
     # B, p = 3.5, 7.0
     tau_basic = 0.5 * rho_a * CD_bed * Ua * abs(Ua)
     M_bed = tau_basic * (1/(1+(B*Mdrag)**p)) # to guarantee that there is a balancing term with tau_top when c=0
-    M_final = gamma * Mdrag + M_bed
+    M_final = Mdrag + M_bed
     return M_final
 
-MDeff_all = []
 def rhs_cmUa(t, y, u_star, Omega, params):
     eps=1e-16
     c, m, Ua = y
     U = m/(c + eps)
 
-    Uinc = CalUincfromU(U, Omega)
+    Uinc = CalUincfromU(U, c, Omega)
     thetainc = theta_inc_from_Uinc(Uinc, Omega)
     Tim  = calc_T_jump_ballistic_assumption(Uinc, thetainc) + eps
-    Pr = calc_Pr(Uinc) 
+    Pr = calc_Pr(Uinc, Omega, params)
 
     # mixing fractions and rates
-    r_im = c/Tim
+    r_im = c/Tim 
 
     # ejection numbers and rebound kinematics
-    NEim = NE_from_Uinc(Uinc, Omega)
+    NEim = NE_from_Uinc(Uinc, Omega, params) 
+    NEim = max(1e-6, NEim)
     eCOR = e_COR_from_Uim(Uinc, Omega); Ure = Uinc*eCOR
     th_re = theta_reb_from_Uim(Uinc, Omega)
     UE = UE_from_Uinc(Uinc, Omega)
 
     # scalar sources
     E = r_im*NEim 
-    D = r_im*(1-Pr)
+    D = r_im*(1-Pr) 
     
     if E<0:
             print('E = ',E)
 
     # momentum sources (streamwise)
-    M_drag = calc_Mdrag(c, Ua, U, Omega) 
+    M_drag = calc_Mdrag(c, Ua, U, Omega, params) 
     M_eje  = E * UE * np.cos(thetaE)
     M_re   = r_im * Pr * Ure*np.cos(th_re) 
     M_im   = r_im * Pr * Uinc*np.cos(thetainc) 
@@ -266,7 +282,8 @@ def simulate_model(params):
 
 def cost_function(params):
     model = simulate_model(params)
-
+    
+    eps = 1e-8
     cost = 0.0
     
     # for i, Omega in enumerate(Omega_list):
@@ -284,19 +301,19 @@ def cost_function(params):
         Ua_mod = model[Omega][ustar]['Ua'][:len(Ua_meas)]
 
         # squared error
-        cost += np.sum((c_mod - C_meas)**2)
-        cost += np.sum((U_mod - U_meas)**2)
-        cost += np.sum((Ua_mod - Ua_meas)**2)
+        cost += np.sum((c_mod - C_meas)**2 / (C_meas + eps))
+        cost += np.sum((U_mod - U_meas)**2 / (U_meas + eps))
+        cost += np.sum((Ua_mod - Ua_meas)**2 / (Ua_meas + eps))
 
     return cost
 
 # initial guess
-x0 = [0.7]#[0.05, 0.05, 3.5, 7.0, 0.50, 1.0]
-bounds = [(0.01, 1.0)]#[(1e-6, 1.0), (1e-6, 1.0), (1e-6, None), (1e-6, None), (0.01, 1.0), (0.01, 2.0)]
+x0 = [0.75, 3.66, 0.03]#[0.2, 0.05]#[0.05, 0.05, 3.5, 7.0]#, 0.50, 1.0]
+bounds = [(0.1, 0.99), (1e-6, 10.0), (0.01, 0.1)]#[(1e-6, 1.0), (1e-6, 1.0)]#[(1e-6, 1.0), (1e-6, 1.0), (1e-6, None), (1e-6, None)]#, (0.01, 1.0), (0.01, 2.0)]
 
 res = minimize(cost_function, x0, bounds=bounds, method='L-BFGS-B')
 
-param_names = ["gamma"]
+param_names = ['A0_pr', 'B0_pr']
 
 for name, value in zip(param_names, res.x):
     print(f"{name:>6} = {value:.6f}")
@@ -366,10 +383,25 @@ for ui, ustar in enumerate(ustar_list):
 # plt.ylabel('balance between tau_top and Mdrag,eff')
 
 # # steady C
-# mean_last100_c = []
+# mean_cs, mean_us, mean_uas = [], [], []
 
 # for Omega in model_run:
 #     for ustar in model_run[Omega]:
 #         c_array = model_run[Omega][ustar]['c']
-#         mean_last100 = np.mean(c_array[-100:])
-#         mean_last100_c.append(mean_last100)
+#         u_array = model_run[Omega][ustar]['U']
+#         ua_array = model_run[Omega][ustar]['Ua']
+#         mean_cs.append(np.mean(c_array[100:]))
+#         mean_us.append(np.mean(u_array[100:]))
+#         mean_uas.append(np.mean(ua_array[100:]))
+        
+# Uinc = CalUincfromU(mean_us[-1], Omega_list)
+# thetainc = theta_inc_from_Uinc(Uinc, Omega_list)
+# Tim  = calc_T_jump_ballistic_assumption(Uinc, thetainc) 
+# r_im = mean_cs[-1]/Tim
+
+# NEim = NE_from_Uinc(Uinc, Omega_list)*(1-0.5*Omega_list)      
+# Pr   = calc_Pr(Uinc)*(1-2.0*Omega_list)
+
+# E = r_im * NEim
+# D = r_im * (1 - Pr)
+# print(Omega_list, E/D)
