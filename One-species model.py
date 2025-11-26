@@ -13,46 +13,63 @@ import matplotlib.pyplot as plt
 g = 9.81
 d = 0.00025                # grain diameter [m]  
 const = np.sqrt(g*d)       # √(g d)
-h = 0.197                 # domain height [m]
-u_star = 0.56              # shear velocity [m/s]
+h = 0.2 - 13.5*d                 # domain height [m]
+Shields = np.linspace(0.02, 0.06, 5)
+ustar_list = np.sqrt(Shields * (2650-1.225)*9.81*d/1.225)
 
 rho_a  = 1.225             # air density [kg/m^3] 
 nu_a   = 1.46e-5           # air kinematic viscosity [m^2/s]
 rho_p  = 2650.0            # particle density [kg/m^3]   
 
 # Particle mass
-mp = rho_p * (np.pi/6.0) * d**3
+mp = rho_p * (np.pi/6.0) * d**3         
+thetaE = np.deg2rad(24)
 
-# Ejection properties
-thetaE = np.deg2rad(25.0)         
-thetaim = np.deg2rad(13.0)
-thetaD = np.deg2rad(13.0)
+Omega_list = [0.0, 0.01, 0.05, 0.10, 0.20]
 
 # -------------------- closures from the PDF --------------------
+def CalUincfromU(U, c):
+    # if Omega == 0:
+    #     # Uinc = 0.43*U
+    #     Uinc = 0.61*U**0.44
+    # else:
+    #     # Uinc = 0.85*U
+    #     Uinc = 0.44*U**1.36
+    Cref_Uinc = 0.079
+    A = 1/np.sqrt(1 + c/Cref_Uinc)
+    Uinc = A*U
+    return Uinc
+
 def calc_T_jump_ballistic_assumption(Uinc, theta_inc):
     Uy0 = Uinc*np.sin(theta_inc)
     Tjump = 2*Uy0/g
     return Tjump 
 
 def calc_Pr(Uinc):
-    Pr = 0.74*np.exp(-4.46*np.exp(-0.1*Uinc/np.sqrt(g*d)))
-    if Pr <0 or Pr>1:
-        print('Warning: Pr is not between 0 and 1')
+    Pr = 0.74*np.exp(-3.66*np.exp(-0.10*Uinc/const))
+    # if Pr <0 or Pr>1:
+    #     print('Warning: Pr is not between 0 and 1')
     return Pr
 
 def e_COR_from_Uim(Uim, Omega):
-    # return 3.05 * (abs(Uim)/const + 1e-12)**(-0.47)   
     mu = 312.48
     sigma = 156.27
     e_com = 3.18*(abs(Uim)/const)**(-0.50) + 0.12*np.log(1 + 1061.81*Omega)*np.exp(- (abs(Uim)/const - mu)**2/(2*sigma**2) )   
     e = min(e_com, 1.0)
     return e          
 
-# def theta_im_from_Uim(Uim, Omega):
-#     alpha = 50.40 - 25.53*Omega**0.5 
-#     beta = -100.12*(1-np.exp(-2.34*Omega)) + 159.33
-#     x = alpha / (abs(Uim)/const + beta)                            
-#     return np.arcsin(np.clip(x, -1.0, 1.0))
+def theta_inc_from_Uinc(Uinc, Omega):
+    # alpha = -113.89*Omega + 67.78 
+    # beta = -260.77 * Omega + 248.51
+    # x = alpha / (abs(Uinc)/const + beta)  
+    # theta_inc = np.arcsin(x)
+    alpha = 0.27 - 0.05*Omega**0.15
+    beta = -0.0029
+    x = alpha * np.exp(beta * abs(Uinc)/const)  
+    theta_inc = np.arcsin(x)
+    if theta_inc < 0 or theta_inc > np.pi / 2: 
+        print('The value of theta_inc is not logical')                                     
+    return theta_inc
 
 # def theta_D_from_UD(UD):
 #     x = 163.68 / (abs(UD) / const + 156.65)
@@ -61,21 +78,23 @@ def e_COR_from_Uim(Uim, Omega):
 #     return np.clip(theta, 0.0, 0.5 * np.pi)                   
 
 def theta_reb_from_Uim(Uim, Omega):
-    x = (-0.0032*Omega**0.39)*(abs(Uim)/const) + 0.43 
+    x = -0.0032*Omega**0.39 *(abs(Uim)/const) + 0.43 
     theta_re = np.arcsin(x)
     if theta_re < 0 or theta_re > np.pi / 2: 
         print('The value of theta_re is not logical')                              
     return theta_re
 
 def NE_from_Uinc(Uinc, Omega): 
-    return (0.03-0.025*Omega**0.21) * (abs(Uinc)/const) # try
+    # return (0.03-0.028*Omega**0.19) * (abs(Uinc)/const) 
+    NE = (0.03 - 0.025*Omega**0.21) * (abs(Uinc)/const) 
+    return NE
 
 def UE_from_Uinc(Uinc, Omega):
+    # A = -2.13*Omega + 4.60
+    # B = 0.40*Omega**0.24 + 0.15
+    # U_E = A*(abs(Uinc)/const)**B * const
     A = -1.51*Omega + 4.62
-    if Omega>0:
-        B = 0.56*Omega+0.15
-    else:
-        B = 0
+    B = 0.37*Omega**0.26 + 0.019
     U_E = A*(abs(Uinc)/const)**B * const
     return U_E * np.sign(Uinc)  
 
@@ -136,30 +155,22 @@ def tau_top(u_star):
 #     return (c * fdrag) / mp
 
 def calc_Mdrag(c, Uair, U, Omega):
-    if Omega == 0:
-        alpha_drag = 0.4 # ?
-    else:
-        alpha_drag = 0.4 # ?
-    Ngrains = c/mp
-    Ueff = alpha_drag*Uair
-    Urel = Ueff-U
+    b = 0.6
+    burel = 0.6
+    Urel = burel*(b*Uair - U)
     Re = abs(Urel)*d/nu_a
     Ruc = 24
     Cd_inf = 0.5
     Cd = (np.sqrt(Cd_inf)+np.sqrt(Ruc/Re))**2
-    
     Agrain = np.pi*(d/2)**2
+    Ngrains = c/mp
     Mdrag = 0.5*rho_a*Urel*abs(Urel)*Cd*Agrain*Ngrains # drag term based on uniform velocity
     return Mdrag
 
 def MD_eff(Ua, U, c, Omega):
-    # _Pmax, _Uc, _pshape, _A_NE, B, p = params
-    # alpha, K = 1.20, 0.040
-    # Uaeff = alpha*Ua
-    # MD_eff = rho_a * K * c/(rho_p*d) *abs(Uaeff - U) * (Uaeff - U)
     Mdrag = calc_Mdrag(c, Ua, U, Omega)
     CD_bed = 0.0037
-    B, p = 4.46, 7.70
+    B, p = 3.5, 7.0
     tau_basic = 0.5 * rho_a * CD_bed * Ua * abs(Ua)
     M_bed = tau_basic * (1/(1+(B*Mdrag)**p)) # to guarantee that there is a balancing term with tau_top when c=0
     M_final = Mdrag + M_bed
@@ -172,18 +183,19 @@ def rhs_cmUa(t, y, u_star, Omega, eps=1e-16):
     c, m, Ua = y
     U = m/(c + eps)
 
-    Uim = U*0.7/np.cos(thetaim)
-    UD = Uim#Uim/3
-    Tim  = calc_T_jump_ballistic_assumption(Uim, thetaim) 
-    Pr = calc_Pr(Uim) 
+    Uinc = CalUincfromU(U, Omega)
+    thetainc = theta_inc_from_Uinc(Uinc, Omega)
+    Tim  = calc_T_jump_ballistic_assumption(Uinc, thetainc) + eps
+    Pr = calc_Pr(Uinc) 
 
     # mixing fractions and rates
     r_im = c/Tim
 
     # ejection numbers and rebound kinematics
-    NEim = NE_from_Uinc(Uim, Omega)
-    eCOR = e_COR_from_Uim(Uim, Omega); Ure = Uim*eCOR
-    th_re = theta_reb_from_Uim(Uim, Omega)
+    NEim = NE_from_Uinc(Uinc, Omega)
+    eCOR = e_COR_from_Uim(Uinc, Omega); Ure = Uinc*eCOR
+    th_re = theta_reb_from_Uim(Uinc, Omega)
+    UE = UE_from_Uinc(Uinc, Omega)
 
     # scalar sources
     E = r_im*NEim 
@@ -193,11 +205,11 @@ def rhs_cmUa(t, y, u_star, Omega, eps=1e-16):
             print('E = ',E)
 
     # momentum sources (streamwise)
-    M_drag = calc_Mdrag(c, Ua, U, Omega) # changed
-    M_eje  = E * UE_from_Uinc(Uim, Omega) * np.cos(thetaE)
-    M_re   = r_im * Pr * ( Ure*np.cos(th_re) )
-    M_im   = r_im * Pr * ( Uim*np.cos(thetaim) )
-    M_dep  = D * ( UD*np.cos(thetaD) )
+    M_drag = calc_Mdrag(c, Ua, U, Omega) 
+    M_eje  = E * UE * np.cos(thetaE)
+    M_re   = r_im * Pr * Ure*np.cos(th_re) 
+    M_im   = r_im * Pr * Uinc*np.cos(thetainc) 
+    M_dep  = D * Uinc*np.cos(thetainc) 
     
     if M_dep > D*U:
             print('More momentum is leaving per particle by deposition, than that there is on average in the saltation layer')
@@ -205,7 +217,7 @@ def rhs_cmUa(t, y, u_star, Omega, eps=1e-16):
             print('D*U', D*U)
             print('D =',D)
             print('U =',U)
-            print('UD =',UD)
+            print('Uinc =',Uinc)
             print('-----------')
             
     if D<0:
@@ -231,9 +243,9 @@ def rhs_cmUa(t, y, u_star, Omega, eps=1e-16):
     m_air_eff = rho_a*h*phi_term
     dUa_dt    = (tau_top(u_star) - MD_eff(Ua, U, c, Omega)) / m_air_eff
     
-    E_all.append(E)
-    D_all.append(D)
-    Rim_all.append(r_im)
+    # E_all.append(E)
+    # D_all.append(D)
+    # Rim_all.append(r_im)
 
     return [dc_dt, dm_dt, dUa_dt]
 # ---------- simple Euler–forward integrator ----------
@@ -259,64 +271,163 @@ def euler_forward(rhs, y0, t_span, dt, u_star, Omega):
 
     return t, y
 
-data = np.loadtxt('CGdata/hb=13.5d/Shields006Dry135d.txt')
-Q_dpm = data[:, 1]*data[:, 2]
-C_dpm = data[:, 1]
-U_dpm = data[:, 2]
-data_M20 = np.loadtxt('CGdata/hb=13.5d/Shields006M20-135d.txt')
-Q_dpmM20 = data_M20[:, 1]*data_M20[:, 2]
-C_dpmM20 = data_M20[:, 1]
-U_dpmM20 = data_M20[:, 2]
-t_dpm = np.linspace(0.01,5,501)
-data_ua = np.loadtxt('TotalDragForce/Ua-t/Uair_ave-tS006Dry.txt', delimiter='\t')
-Ua_dpm = data_ua[0:,1]  
-data_uaM20 = np.loadtxt('TotalDragForce/Ua-t/Uair_ave-tS006M20.txt', delimiter='\t')
-Ua_dpmM20 = data_uaM20[0:,1]  
 
-# ---------- run it ----------
-# initial condition 
-y0 = (C_dpm[0], C_dpm[0]*U_dpm[0], Ua_dpm[0])
-y0_wet = (C_dpmM20[0], C_dpmM20[0]*U_dpmM20[0], Ua_dpmM20[0])
+omega_labels = ['Dry', 'M1', 'M5', 'M10', 'M20']
+# Initialize lists to hold results for each Omega
+Q_dpm = []
+C_dpm = []
+U_dpm = []
+Ua_dpm = []
 
-T0, T1 = 0.0, 5.0
-dt     = 1e-2   
+# Loop over all moisture levels
+for label in omega_labels:
+    for i in range(2, 7):
+        # --- Load sediment transport data ---
+        file_path = f'CGdata/hb=13.5d/Shields00{i}{label}-135d.txt'
+        data = np.loadtxt(file_path)
+        C = data[:, 1]
+        U = data[:, 2]
+        Q = C * U
+        # Append to lists
+        C_dpm.append(C)
+        U_dpm.append(U)
+        Q_dpm.append(Q)
+        # --- Load corresponding air velocity data ---
+        file_path_ua = f'TotalDragForce/Ua-t/Uair_ave-tS00{i}{label}.txt'
+        data_ua = np.loadtxt(file_path_ua, delimiter='\t')
+        Ua = data_ua[:, 1]
+        Ua_dpm.append(Ua)
 
-Omega_dry = 0.0
-Omega_wet = 0.2
+# ---------- run it ---------- 
+def simulate_model():
 
-# dry
-t, Y = euler_forward(rhs_cmUa, y0, (T0, T1), dt, u_star, Omega_dry)
-c  = Y[0]
-m  = Y[1]
-Ua = Y[2]
-U  = m / np.maximum(c, 1e-16)
-# wet
-t, Y_wet = euler_forward(rhs_cmUa, y0_wet, (T0, T1), dt, u_star, Omega_wet)
-c_wet  = Y_wet[0]
-m_wet  = Y_wet[1]
-Ua_wet = Y_wet[2]
-U_wet  = m_wet / np.maximum(c_wet, 1e-16)
+    model_output = {Omega: {} for Omega in Omega_list}
+
+    for i, Omega in enumerate(Omega_list):
+        for j, ustar in enumerate(ustar_list):
+            index = i*5+j
+            y0 = (C_dpm[index][0], C_dpm[index][0]*U_dpm[index][0], Ua_dpm[index][0])
+            t, Y = euler_forward(rhs_cmUa, y0, (0.0, 5.0), 1e-2, ustar, Omega)
+    
+            c  = Y[0]
+            m  = Y[1]
+            Ua = Y[2]
+            U  = m / np.maximum(c, 1e-16)
+    
+            model_output[Omega][ustar] = {
+                'c': c,
+                'U': U,
+                'Ua': Ua,
+            }
+
+    return model_output
+
+model_run = simulate_model()
+t_mod = np.linspace(0, 5, 501)
 
 # ---------- plot ----------
-# plt.close('all')
-plt.figure(figsize=(8,8))
-plt.subplot(4,1,1); plt.plot(t, m, color='tab:blue', label='dry'); plt.plot(t, m_wet, color='tab:orange', label=r'$\Omega$=20$\%$')
-plt.plot(t_dpm, Q_dpm,  '--', color='tab:blue', label='dry DPM'); plt.plot(t_dpm, Q_dpmM20,  '--', color='tab:orange', label='M20 DPM')
-plt.ylabel('Q [kg/m/s]'); plt.grid(True); plt.legend()
+colors = plt.cm.viridis(np.linspace(1, 0, 5))  # 5 colors
 
-plt.subplot(4,1,2); plt.plot(t, c,  label='dry'); plt.plot(t, c_wet, label=r'$\Omega$=20$\%$')
-plt.plot(t_dpm, C_dpm,  '--', color='tab:blue', label='dry DPM'); plt.plot(t_dpm, C_dpmM20,  '--', color='tab:orange', label='M20 DPM')
-plt.ylabel(r'c [kg/m$^2$]'); plt.grid(True); plt.legend()
+plt.close('all')
+for ui, ustar in enumerate(ustar_list):
 
-plt.subplot(4,1,3); plt.plot(t, U,  label='dry'); plt.plot(t, U_wet, label=r'$\Omega$=20$\%$')
-plt.plot(t_dpm, U_dpm,  '--', color='tab:blue', label='dry DPM'); plt.plot(t_dpm, U_dpmM20,  '--', color='tab:orange', label='M20 DPM')
-plt.ylabel('U [m/s]'); plt.grid(True); plt.legend()
+    fig, axes = plt.subplots(3, 1, figsize=(7, 10), sharex=True)
+    axC, axU, axUa = axes
 
-plt.subplot(4,1,4); plt.plot(t, Ua, label='dry'); plt.plot(t, Ua_wet, label=r'$\Omega$=20$\%$')
-plt.plot(t_dpm, Ua_dpm,  '--', color='tab:blue', label='dry DPM'); plt.plot(t_dpm, Ua_dpmM20,  '--', color='tab:orange', label='M20 DPM')
-plt.ylabel('Ua [m/s]'); plt.xlabel('t [s]'); plt.grid(True); plt.legend()
+    for oi, Omega in enumerate(Omega_list):
 
-for ax in plt.gcf().axes:
-    ax.set_ylim(bottom=0)
+        # measured data index: i*5 + j
+        idx = oi*len(ustar_list) + ui
+        
+        # measured
+        C_meas  = C_dpm[idx]
+        U_meas  = U_dpm[idx]
+        Ua_meas = Ua_dpm[idx]
+        t_meas  = np.linspace(0, 5, len(C_meas))
+
+        # model
+        C_mod   = model_run[Omega][ustar]['c']
+        U_mod   = model_run[Omega][ustar]['U']
+        Ua_mod  = model_run[Omega][ustar]['Ua']
+
+        label = f'Ω={Omega}'
+
+        # --- Plot C ---
+        axC.plot(t_mod, C_mod, color=colors[oi], label=f'{label} – model')
+        axC.plot(t_meas, C_meas, '--', color=colors[oi], label=f'{label} – data')
+
+        # --- Plot U ---
+        axU.plot(t_mod, U_mod, color=colors[oi])
+        axU.plot(t_meas, U_meas, '--', color=colors[oi])
+
+        # --- Plot Ua ---
+        axUa.plot(t_mod, Ua_mod, color=colors[oi])
+        axUa.plot(t_meas, Ua_meas, '--', color=colors[oi])
+
+    axC.set_ylabel('C [kg/m²]')
+    axC.set_title(fr'$\Theta$ = {Shields[ui]:.2f}')
+    axC.grid(True)
+    axC.set_ylim(0, 1.0)
+    axC.legend(fontsize=8)
+
+    axU.set_ylabel('U [m/s]')
+    axU.set_ylim(0, 9.5)
+    axU.grid(True)
+
+    axUa.set_ylabel('Ua [m/s]')
+    axUa.set_xlabel('t [s]')
+    axUa.set_ylim(0, 13.5)
+    axUa.grid(True)
+
+    plt.tight_layout()
+    plt.show()
+
+# chunk_size = 3000
+# plt.figure(figsize=(8,8))
+# plt.subplot(2,1,1)
+# for i in range(len(Omega_list)):
+#     start = i * chunk_size
+#     end   = (i + 1) * chunk_size
+#     plt.plot(t[1:], E_all[start:end], color=colors[i], label=rf"$\Omega$={Omega_list[i]*100} $\%$")
+#     # plt.plot(t, C_dpm[i],  '--', color=colors[i], label=rf"$\Omega$={Omega_list[i]*100} $\%$ DPM")
+# plt.ylim(bottom=0)
+# plt.ylabel('E'); plt.grid(True); plt.legend()
+
+# plt.subplot(2,1,2); 
+# for i in range(len(Omega_list)):
+#     start = i * chunk_size
+#     end   = (i + 1) * chunk_size
+#     plt.plot(t[1:], D_all[start:end], color=colors[i])
+#     # plt.plot(t, C_dpm[i],  '--', color=colors[i])
+# plt.ylim(bottom=0)
+# plt.ylabel(r'D [kg/m$^2$/s]'); plt.grid(True)
+
+# for ax in plt.gcf().axes:
+#     ax.set_ylim(bottom=0)
     
-plt.tight_layout(); plt.show()
+# plt.tight_layout(); plt.show()
+
+# # check E/c and D/c
+# U_check = np.linspace(0.5, 6, 100)
+# E_c_all, D_c_all = [], []
+# for i in range(5):
+#     Uinc_check = CalUincfromU(U_check, Omega_list[i])
+#     theta_inc_check = theta_inc_from_Uinc(Uinc_check, Omega_list[i])
+#     T_check = calc_T_jump_ballistic_assumption(Uinc_check, theta_inc_check)
+#     NE_check = NE_from_Uinc(Uinc_check, Omega_list[i])
+#     Pr_check = calc_Pr(Uinc_check)
+    
+#     E_c = NE_check/T_check
+#     D_c = (1-Pr_check)/T_check
+#     E_c_all.append(E_c)
+#     D_c_all.append(D_c)
+    
+# plt.figure()
+# for i in range(len(Omega_list)):
+#     plt.plot(U_check, E_c_all[i], color=colors[i], label=f'Omega={Omega_list[i]} E')   
+# for i in range(len(Omega_list)):
+#     plt.plot(U_check, D_c_all[i], '--', color=colors[i], label=f'Omega={Omega_list[i]} D') 
+# plt.legend()
+# plt.xlabel('U [m/s]')
+# plt.ylabel('E/c and D/c')
+    
