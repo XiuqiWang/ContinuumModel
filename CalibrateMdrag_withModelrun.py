@@ -30,23 +30,19 @@ thetaE = np.deg2rad(24)
 colors = plt.cm.viridis(np.linspace(1, 0, 5))  # 5 colors
 
 # -------------------- closures from the PDF --------------------
-def CalUincfromU(U, c, Omega):
-    Cref, Cref_urel, B, p = 1.0, 0.0088, 9.52, 18.05 
-    # a1, b1 = 0.01, 0.99
-    a0, b0 = 0.92, 0.58
-    a1, b1 = 0,0
-    # A = a0 + a1*Omega
-    # n = b0 + b1*Omega
+def CalUincfromU(U, c, Omega, params):
     # if Omega == 0:
     #     # Uinc = 0.43*U
     #     Uinc = 0.61*U**0.44
     # else:
     #     # Uinc = 0.85*U
     #     Uinc = 0.44*U**1.36
-    Cref_Uinc, Cref_Uinc_n = 0.20, 0.05
+    Cref_Uinc = 0.079
+    # alpha, beta = params
+
+    # Cref_eff = Cref_Uinc * (1 + alpha * Omega**beta)
     A = 1/np.sqrt(1 + c/Cref_Uinc)
-    n = 1/np.sqrt(1 + c/Cref_Uinc_n)
-    Uinc = A*U**n
+    Uinc = A*U
     return Uinc
 
 def calc_T_jump_ballistic_assumption(Uinc, theta_inc):
@@ -55,35 +51,32 @@ def calc_T_jump_ballistic_assumption(Uinc, theta_inc):
     return Tjump 
 
 def calc_Pr(Uinc, Omega, params):
-    kA, kB = 0, 0 #params
-    # A0 = 0.74
-    # B0 = 3.66
-    A0, B0, _ = params
-    A = A0 * (1.0 + kA * Omega)
-    B = B0 * (1.0 + kB * Omega)
-    # ensure A <= 1 for all Omega <= 0.2
-    A = min(A, 0.999)
-    Pr = A*np.exp(-B*np.exp(-0.10*Uinc/const))
+    # kA, kB = 0, 0 #params
+    # # A0 = 0.74
+    # # B0 = 3.66
+    # A0, B0, _ = params
+    # A = A0 * (1.0 + kA * Omega)
+    # B = B0 * (1.0 + kB * Omega)
+    # # ensure A <= 1 for all Omega <= 0.2
+    # A = min(A, 0.999)
+    # Pr = A*np.exp(-B*np.exp(-0.10*Uinc/const))
+    # Pr = 0.74*np.exp(-4.46*np.exp(-0.1*abs(Uinc)/const))
+    ap, bp, cp = 0.45, 7.99, 0.45
+    # ap = ap0 + ap1*Omega
+    Pr = ap*np.exp(-bp*np.exp(-cp*abs(Uinc)/const))
     return Pr
 
-# Uinc = np.linspace(0, 5, 100)
-# Pr = calc_Pr(Uinc, 0, 0.5, 0.5)
-# Pr_wet = calc_Pr(Uinc, 0.2, 0.5, 0.5)
-# plt.figure()
-# plt.plot(Uinc, Pr)
-# plt.plot(Uinc, Pr_wet)
-
-def e_COR_from_Uim(Uim, Omega):
+def e_COR_from_Uim(Uim, Omega, params):
     mu = 312.48
     sigma = 156.27
-    e_com = 3.18*(abs(Uim)/const)**(-0.50) + 0.12*np.log(1 + 1061.81*Omega)*np.exp(- (abs(Uim)/const - mu)**2/(2*sigma**2) )   
+    e_com = 3.18*(abs(Uim)/const)**(-0.50) + 0.12*np.log(1 + 1061.81*Omega)*np.exp(- (abs(Uim)/const - mu)**2/(2*sigma**2) )     
     e = min(e_com, 1.0)
     return e          
 
 def theta_inc_from_Uinc(Uinc, Omega):
-    alpha = -113.89*Omega + 67.78 
-    beta = -260.77 * Omega + 248.51
-    x = alpha / (abs(Uinc)/const + beta)  
+    alpha = 0.27 - 0.05*Omega**0.15
+    beta = -0.0029
+    x = alpha * np.exp(beta * abs(Uinc)/const)  
     theta_inc = np.arcsin(x)
     if theta_inc < 0 or theta_inc > np.pi / 2: 
         print('The value of theta_inc is not logical')                                     
@@ -97,14 +90,14 @@ def theta_reb_from_Uim(Uim, Omega):
     return theta_re
 
 def NE_from_Uinc(Uinc, Omega, params): 
-    _, _, a_ne = params
-    # NE = (0.03-0.028*Omega**0.19) * (abs(Uinc)/const) 
-    NE = a_ne * (abs(Uinc)/const) 
+    # NE = (0.03 - 0.025*Omega**0.21) * (abs(Uinc)/const) 
+    ane, bne, cne = params
+    NE = (ane - bne*Omega**cne) * (abs(Uinc)/const) 
     return NE
 
 def UE_from_Uinc(Uinc, Omega):
-    A = -2.13*Omega + 4.60
-    B = 0.40*Omega**0.24 + 0.008
+    A = -1.51*Omega + 4.62
+    B = 0.37*Omega**0.26 + 0.019
     U_E = A*(abs(Uinc)/const)**B * const
     return U_E * np.sign(Uinc)  
 
@@ -112,7 +105,7 @@ def tau_top(u_star):
     return rho_a * u_star**2     
 
 def calc_Mdrag(c, Uair, U, Omega, params):
-    Cref, Cref_urel, B, p = 1.0, 0.0088, 9.52, 18.05
+    Cref, Cref_urel, B, p = 1.0, 0.024, 12.82, 8.11 #1.0, 0.0088, 9.52, 18.05#1.0, 0.014, 3.50, 7.0 #
     b = np.sqrt(1 - c/(c+Cref))
     b_urel = 1/np.sqrt(1 + c/Cref_urel)
     Urel = b_urel * (b*Uair - U)
@@ -126,7 +119,7 @@ def calc_Mdrag(c, Uair, U, Omega, params):
     return Mdrag
 
 def MD_eff(Ua, U, c, Omega, params):
-    Cref, Cref_urel, B, p = 1.0, 0.0088, 9.52, 18.05
+    Cref, Cref_urel, B, p = 1.0, 0.024, 12.82, 8.11 #1.0, 0.0088, 9.52, 18.05 #1.0, 0.014, 3.50, 7.0 #
     Mdrag = calc_Mdrag(c, Ua, U, Omega, params)
     CD_bed = 0.0037
     # B, p = 3.5, 7.0
@@ -135,12 +128,20 @@ def MD_eff(Ua, U, c, Omega, params):
     M_final = Mdrag + M_bed
     return M_final
 
+# MEASUREMENT–DRIVEN START TIME DETECTION
+# ============================================================
+def detect_start_idx(C_meas, Cref):
+    above = np.where(C_meas > Cref)[0]
+    if len(above) == 0:
+        return None
+    return above[0]
+
 def rhs_cmUa(t, y, u_star, Omega, params):
     eps=1e-16
     c, m, Ua = y
     U = m/(c + eps)
 
-    Uinc = CalUincfromU(U, c, Omega)
+    Uinc = CalUincfromU(U, c, Omega, params)
     thetainc = theta_inc_from_Uinc(Uinc, Omega)
     Tim  = calc_T_jump_ballistic_assumption(Uinc, thetainc) + eps
     Pr = calc_Pr(Uinc, Omega, params)
@@ -150,8 +151,8 @@ def rhs_cmUa(t, y, u_star, Omega, params):
 
     # ejection numbers and rebound kinematics
     NEim = NE_from_Uinc(Uinc, Omega, params) 
-    NEim = max(1e-6, NEim)
-    eCOR = e_COR_from_Uim(Uinc, Omega); Ure = Uinc*eCOR
+    # NEim = max(1e-6, NEim)
+    eCOR = e_COR_from_Uim(Uinc, Omega, params); Ure = Uinc*eCOR
     th_re = theta_reb_from_Uim(Uinc, Omega)
     UE = UE_from_Uinc(Uinc, Omega)
 
@@ -258,14 +259,33 @@ for label in omega_labels:
         Ua_dpm.append(Ua)
 
 def simulate_model(params):
-
     model_output = {Omega: {} for Omega in Omega_list}
-
+    dt = 1e-2
+    
     for i, Omega in enumerate(Omega_list):
         for j, ustar in enumerate(ustar_list):
+        # j, ustar = 3, ustar_list[-1]
             index = i*4+j
-            y0 = (C_dpm[index][0], C_dpm[index][0]*U_dpm[index][0], Ua_dpm[index][0])
-            t, Y = euler_forward(rhs_cmUa, y0, (0.0, 5.0), 1e-2, ustar, Omega, params)
+    
+            C_meas = C_dpm[index]
+            U_meas = U_dpm[index]
+            Ua_meas = Ua_dpm[index]
+    
+            start_idx = detect_start_idx(C_meas, Cref=0.05)
+            if start_idx is None:
+                # no saltation → ignore
+                continue
+    
+            # initial conditions set from data at start point
+            C0 = C_meas[start_idx]
+            U0 = U_meas[start_idx]
+            Ua0 = Ua_meas[start_idx]
+    
+            y0 = (C0, C0*U0, Ua0)
+    
+            # simulate model from that initial point over remaining time
+            total_time = 5.0 - start_idx*dt
+            t, Y = euler_forward(rhs_cmUa, y0, (0.0, total_time), dt, ustar, Omega, params)
     
             c  = Y[0]
             m  = Y[1]
@@ -273,107 +293,127 @@ def simulate_model(params):
             U  = m / np.maximum(c, 1e-16)
     
             model_output[Omega][ustar] = {
+                't': t,
+                'idx0': start_idx,
                 'c': c,
                 'U': U,
                 'Ua': Ua,
             }
-
     return model_output
 
 def cost_function(params):
     model = simulate_model(params)
-    
     eps = 1e-8
     cost = 0.0
-    
-    # for i, Omega in enumerate(Omega_list):
-    i, Omega = 0, 0.0
-    for j, ustar in enumerate(ustar_list):
+
+    for i, Omega in enumerate(Omega_list):
+        # for j, ustar in enumerate(ustar_list):
+        j = 3
+        ustar = ustar_list[-1]
         index = i*4+j
-        # measured
+
         C_meas = C_dpm[index]
         U_meas = U_dpm[index]
         Ua_meas = Ua_dpm[index]
 
-        # model
-        c_mod  = model[Omega][ustar]['c'][:len(C_meas)]
-        U_mod  = model[Omega][ustar]['U'][:len(U_meas)]
-        Ua_mod = model[Omega][ustar]['Ua'][:len(Ua_meas)]
+        start_idx = detect_start_idx(C_meas, Cref=0.05)
+        if start_idx is None:
+            continue
 
-        # squared error
-        cost += np.sum((c_mod - C_meas)**2 / (C_meas + eps))
-        cost += np.sum((U_mod - U_meas)**2 / (U_meas + eps))
-        cost += np.sum((Ua_mod - Ua_meas)**2 / (Ua_meas + eps))
+        # data segment starting at onset
+        C_meas_seg  = C_meas[start_idx:]
+        U_meas_seg  = U_meas[start_idx:]
+        Ua_meas_seg = Ua_meas[start_idx:]
+
+        # model segment
+        c_mod  = model[Omega][ustar]['c'][:len(C_meas_seg)]
+        U_mod  = model[Omega][ustar]['U'][:len(U_meas_seg)]
+        Ua_mod = model[Omega][ustar]['Ua'][:len(Ua_meas_seg)]
+
+        # residuals
+        cost += np.sum((c_mod - C_meas_seg)**2) / (np.sum(C_meas_seg**2) + eps)
+        cost += np.sum((U_mod - U_meas_seg)**2)  / (np.sum(U_meas_seg**2) + eps)
+        cost += np.sum((Ua_mod - Ua_meas_seg)**2) / (np.sum(Ua_meas_seg**2) + eps)
 
     return cost
 
 # initial guess
-x0 = [0.75, 3.66, 0.03]#[0.2, 0.05]#[0.05, 0.05, 3.5, 7.0]#, 0.50, 1.0]
-bounds = [(0.1, 0.99), (1e-6, 10.0), (0.01, 0.1)]#[(1e-6, 1.0), (1e-6, 1.0)]#[(1e-6, 1.0), (1e-6, 1.0), (1e-6, None), (1e-6, None)]#, (0.01, 1.0), (0.01, 2.0)]
+# x0 = [0.03, 0.03, 0.20]#[0.75, 8.0, 0.1#[0.05, 0.05, 3.5, 7.0]#, 0.50, 1.0]
+# bounds = [(0.001, 0.1), (0.001, 0.1), (0.001, 1.0)]#[(0.10, 0.99),(1e-6, 15.0), (0.001, 0.5),#(1e-6, 1.0), (1e-6, 1.0), (1e-6, None), (1e-6, None)]#, (0.01, 1.0), (0.01, 2.0)]
 
-res = minimize(cost_function, x0, bounds=bounds, method='L-BFGS-B')
+# res = minimize(cost_function, x0, bounds=bounds, method='L-BFGS-B')
 
-param_names = ['A0_pr', 'B0_pr']
+# param_names = ['aP', 'bP', 'cP', 'ane', 'bne', 'cne']
 
-for name, value in zip(param_names, res.x):
-    print(f"{name:>6} = {value:.6f}")
+# for name, value in zip(param_names, res.x):
+#     print(f"{name:>6} = {value:.6f}")
 
-model_run = simulate_model(res.x)
+model_run = simulate_model([0.029, 0.019, 0.098])#(res.x) # [2.0, 0.015, 9.52, 18.05] higher C peak
 t_mod = np.linspace(0, 5, 501)
+dt = 0.01
 
-plt.close('all')
+# plt.close('all')
 for ui, ustar in enumerate(ustar_list):
+# ui, ustar = 3, ustar_list[-1]
 
     fig, axes = plt.subplots(3, 1, figsize=(7, 10), sharex=True)
     axC, axU, axUa = axes
-
+    
     for oi, Omega in enumerate(Omega_list):
-
-        # measured data index: i*5 + j
-        idx = oi*len(ustar_list) + ui
-        
-        # measured
+    
+        # measured series
+        idx     = oi*len(ustar_list) + ui
         C_meas  = C_dpm[idx]
         U_meas  = U_dpm[idx]
         Ua_meas = Ua_dpm[idx]
         t_meas  = np.linspace(0, 5, len(C_meas))
-
-        # model
-        C_mod   = model_run[Omega][ustar]['c']
-        U_mod   = model_run[Omega][ustar]['U']
-        Ua_mod  = model_run[Omega][ustar]['Ua']
-
+    
+        # detect start idx
+        start_idx = detect_start_idx(C_meas, Cref=0.05)
+        if start_idx is None:
+            continue
+    
+        # model series (already trimmed in simulate_model)
+        C_mod  = model_run[Omega][ustar]['c']
+        U_mod  = model_run[Omega][ustar]['U']
+        Ua_mod = model_run[Omega][ustar]['Ua']
+        t_mod  = model_run[Omega][ustar]['t']
+    
+        # Now SHIFT model time to actual real time
+        t_mod_shifted = t_mod + (start_idx * dt)
+    
         label = f'Ω={Omega}'
-
+    
         # --- Plot C ---
-        axC.plot(t_mod, C_mod, color=colors[oi], label=f'{label} – model')
         axC.plot(t_meas, C_meas, '--', color=colors[oi], label=f'{label} – data')
-
+        axC.plot(t_mod_shifted, C_mod, color=colors[oi], label=f'{label} – model')
+    
         # --- Plot U ---
-        axU.plot(t_mod, U_mod, color=colors[oi])
         axU.plot(t_meas, U_meas, '--', color=colors[oi])
-
+        axU.plot(t_mod_shifted, U_mod, color=colors[oi])
+    
         # --- Plot Ua ---
-        axUa.plot(t_mod, Ua_mod, color=colors[oi])
         axUa.plot(t_meas, Ua_meas, '--', color=colors[oi])
-
+        axUa.plot(t_mod_shifted, Ua_mod, color=colors[oi])
+    
     axC.set_ylabel('C [kg/m²]')
     axC.set_title(fr'$\Theta$ = {Shields[ui]:.2f}')
     axC.grid(True)
     axC.set_ylim(0, 0.30)
     axC.legend(fontsize=8)
-
+    
     axU.set_ylabel('U [m/s]')
     axU.set_ylim(0, 9.5)
     axU.grid(True)
-
+    
     axUa.set_ylabel('Ua [m/s]')
     axUa.set_xlabel('t [s]')
     axUa.set_ylim(0, 13.5)
     axUa.grid(True)
-
+    
     plt.tight_layout()
     plt.show()
+
     
 # plt.figure()
 # for i in range(4):
