@@ -18,20 +18,15 @@ kappa = 0.4
 rho_air = 1.225
 rho_sand = 2650
 nu_a = 1.45e-6
+Ruc = 24
+Cd_inf = 0.5
 Shields = np.linspace(0.02, 0.06, 5)
 u_star = np.sqrt(Shields * (2650-1.225)*9.81*D/1.225)
 t = np.linspace(0, 5, 501)
 mp = 2650 * np.pi/6 * D**3 #particle mass
 
-def drag_model(x, b, CD):
-    Ua, U = x
-    ueff = b*Ua
-    U_rel = ueff - U
-    return np.pi*D**2/8 * rho_air * CD * np.abs(U_rel) * U_rel  
-
-def drag_model_ori(x, Cref, b_Ua):
+def drag_model(x, b_Ua, b_urel):
     Ua, U, c = x
-    b_urel = 1/(1 + c/Cref)
     Urel = b_urel*(b_Ua * Ua - U)
     Re = abs(Urel)*D/nu_a
     Ruc = 24
@@ -39,6 +34,66 @@ def drag_model_ori(x, Cref, b_Ua):
     Cd = (np.sqrt(Cd_inf)+np.sqrt(Ruc/Re))**2   
     fdrag = np.pi/8 * D**2 * rho_air * Urel * abs(Urel) * Cd
     return fdrag
+
+def drag_model_ori(x, Cref, Cref_urel):
+    Ua, U, c = x
+    b_urel = 1/np.sqrt(1 + c/Cref_urel)
+    b_Ua = np.sqrt(1-c/(c+Cref))
+    Urel = b_urel*(b_Ua * Ua - U)
+    Re = abs(Urel)*D/nu_a
+    Cd = (np.sqrt(Cd_inf)+np.sqrt(Ruc/Re))**2   
+    fdrag = np.pi/8 * D**2 * rho_air * Urel * abs(Urel) * Cd
+    return fdrag
+
+def CalUrel(x, Cref, Cref_urel):
+    Ua, U, c = x
+    b_urel = 1/np.sqrt(1 + c/Cref_urel)
+    b_Ua = np.sqrt(1-c/(c+Cref))
+    Urel = b_urel*(b_Ua * Ua - U)
+    return Urel
+
+def compute_b(Mdrag, c, U, Ua, max_iter=50, tol=1e-6):    
+    Mdrag = np.asarray(Mdrag, dtype=float)
+    c     = np.asarray(c,     dtype=float)
+    U     = np.asarray(U,     dtype=float)
+    Ua    = np.asarray(Ua,    dtype=float)
+
+    # Avoid division by zero
+    eps = 1e-16
+    Ua_safe = Ua + eps
+    c_safe  = c  + eps
+
+    # Initial guess
+    b = np.ones_like(Mdrag)
+
+    # Pre-factor for X (everything except Cd)
+    K = Mdrag * mp * 8.0 / (np.pi * D**2 * rho_air * c_safe)
+
+    for _ in range(max_iter):
+        # Using current b, compute U_rel, Re, Cd
+        Urel = b * Ua_safe - U
+        Re   = np.abs(Urel) * D / (nu_a + eps) + eps
+        Cd   = (np.sqrt(Cd_inf) + np.sqrt(Ruc / Re))**2
+
+        # Solve for Urel_new from Mdrag expression with this Cd
+        X = K / Cd                      # X = U_rel * |U_rel|
+        Urel_new = np.sign(X) * np.sqrt(np.abs(X))
+
+        # Update b
+        b_new = (U + Urel_new) / Ua_safe
+
+        # Check convergence
+        if np.all(np.abs(b_new - b) < tol):
+            b = b_new
+            break
+
+        b = b_new
+
+    return b
+
+def Fitb(U, b0, b_inf, k):
+    b = b0 + (b_inf - b0)*(1 - np.exp(-k*U))
+    return b
 
 def BinfdUa(Ua, fd, U, Uabin):
     Ua = np.asarray(Ua, dtype=float)
@@ -104,7 +159,7 @@ def r2_score(y, ypred):
     ss_tot = np.sum((y - np.mean(y))**2)
     return 1.0 - ss_res/ss_tot
 
-C_all_S, U_all_S, Ua_all_S, MD_all_S, fd_ori, fd_ori_se, fd_com = [], [], [], [], [], [], []
+C_all_S, U_all_S, Ua_all_S, MD_all_S, fd_ori, fd_ori_se, fd_com, Md_all_S, b_all_S = [], [], [], [], [], [], [], [], []
 omega_labels = ['Dry', 'M1', 'M5', 'M10', 'M20']
     # ---- Load data ----
 for label in omega_labels:
@@ -120,84 +175,88 @@ for label in omega_labels:
         Ua_dpm = np.loadtxt(file_ua, delimiter='\t')[:, 1]
         
         # binning Ua and getting the mean of RHS
-        fd_dpm = MD*mp/C_dpm
+        # fd_dpm = MD*mp/C_dpm
+        
+        b_dpm = compute_b(MD, C_dpm, U_dpm, Ua_dpm)
         
         # Combine
         U_all_S.append(U_dpm)
         Ua_all_S.append(Ua_dpm)
         C_all_S.append(C_dpm)
-        fd_ori.append(fd_dpm)
+        # fd_ori.append(fd_dpm)
+        Md_all_S.append(MD)
+        b_all_S.append(b_dpm)
 
 U_all = np.concatenate(U_all_S)
 Ua_all = np.concatenate(Ua_all_S)
 C_all = np.concatenate(C_all_S)
-fd_all = np.concatenate(fd_ori)
-mask = np.isfinite(U_all) & np.isfinite(Ua_all) & np.isfinite(C_all) & np.isfinite(fd_all) 
-U_all, Ua_all, C_all, fd_all = U_all[mask], Ua_all[mask], C_all[mask], fd_all[mask]
+# fd_all = np.concatenate(fd_ori)
+b_all = np.concatenate(b_all_S)
+mask = np.isfinite(U_all) & np.isfinite(b_all) 
+U_all, b_all = U_all[mask], b_all[mask]
 
-popt, _ = curve_fit(drag_model_ori, (Ua_all, U_all, C_all), fd_all, absolute_sigma=True, maxfev=20000)
-Cref, b_ua = popt
-print(f'Cref={Cref:.2f}, b_ua={b_ua:.4f}')
+popt, _ = curve_fit(Fitb, U_all, b_all, absolute_sigma=True, maxfev=20000)
+b0, b_inf, k = popt
+print(f'b0={b0:.2f}, b_inf={b_inf:.2f}, k = {k:.2f}')
 
-fd_pred = drag_model_ori((Ua_all, U_all, C_all), Cref, b_ua)
-r2 = r2_score(fd_all, fd_pred)
+# Cref, Cref_urel = 1.0, 0.024#1.0, 0.0088
+b_pred = Fitb(U_all, b0, b_inf, k)
+r2 = r2_score(b_all, b_pred)
 print('r2', r2)
 
 plt.close('all')
-
+# Cref, Cref_urel = 1.0, 0.024#1.0, 0.0088
 for i in range(5): #Omega
     plt.figure(figsize=(10, 8))
     for j in range(5): #Shields
         plt.subplot(3, 2, j+1)
         index_byS = i*5+j 
-        fd_com = drag_model_ori((Ua_all_S[index_byS], U_all_S[index_byS], C_all_S[index_byS]), Cref, b_ua)
-        plt.plot(Ua_all_S[index_byS], fd_ori[index_byS], 'o', label='DPM')
-        plt.plot(Ua_all_S[index_byS], fd_com, 'o', label='fit')
+        b_com = Fitb(U_all_S[index_byS], b0, b_inf, k)
+        plt.plot(U_all_S[index_byS], b_all_S[index_byS], 'o', label='DPM')
+        plt.plot(U_all_S[index_byS], b_com, 'o', label='fit')
         plt.title(f"S00{j+2} {omega_labels[i]}")
-        plt.xlabel('Ua [m/s]')
-        plt.ylabel(r'$f_d$ [N]')
-        plt.ylim(0, 4e-7)
-        plt.xlim(4,14)
+        plt.xlabel(r'$U$ [m/s]')
+        plt.ylabel(r'$b$ [-]')
+        plt.ylim(0, 1.1)
+        plt.xlim(0, 9)
         plt.grid(True)
         plt.legend()
     plt.tight_layout()
     plt.show()
-
-# plt.figure(figsize=(10, 8))
-# for i in range(5):
-#     plt.subplot(3, 2, i + 1)
-#     plt.plot(t, Ua_all_S[i]-U_all_S[i], 'o', label='DPM')
-#     plt.title(f"S00{i+2} M20")
-#     plt.xlabel('t [s]')
-#     plt.ylabel(r'$U_a-U$ [m/s]')
-#     plt.ylim(0, 12)
-#     plt.xlim(left=0)
-#     plt.grid(True)
-#     plt.legend()
-# plt.tight_layout()
-# plt.show()
-
-# plt.figure(figsize=(10, 8))
-# for i in range(5):
-#     plt.subplot(3, 2, i + 1)
-#     plt.plot(t, fd_ori[i], 'o', label='DPM')
-#     fd_com = drag_model_ori((Ua_all_S[i], U_all_S[i], C_all_S[i]), b)
-#     # plt.plot(t, fd_com, 'o', label='fit')
-#     plt.title(f"S00{i+2} M20")
-#     plt.xlabel('t [s]')
-#     plt.ylabel(r'$f_d$ [N]')
-#     plt.ylim(0, 4e-7)
-#     plt.xlim(left=0)
-#     plt.grid(True)
-#     plt.legend()
-# plt.tight_layout()
-# plt.show()
-
-# Omega = [0, 0.01, 0.05, 0.1, 0.2]
-# plt.figure()
-# plt.plot(Omega, [0.30, 0.40, 0.39, 0.40, 0.43], 'o')
-# plt.xlabel(r'$\Omega$');plt.ylabel(r'$b_{Ua}$')
-
-# plt.figure()
-# plt.plot(Omega, [0.40, 0.33, 0.26, 0.26, 0.33], 'o')
-# plt.xlabel(r'$\Omega$');plt.ylabel(r'$b_{U}$')
+    
+# plot to find out the dependence of c/U on b    
+# for i in range(5): #Omega
+#     plt.figure(figsize=(8, 8))
+#     for j in range(5): #Shields
+#         plt.subplot(3, 2, j+1)
+#         index_byS = i*5+j 
+#         Md_dpm = Md_all_S[index_byS]
+#         b_dpm = compute_b(Md_dpm, C_all_S[index_byS], U_all_S[index_byS], Ua_all_S[index_byS])
+#         plt.plot(C_all_S[index_byS], b_dpm, 'o', label='DPM')
+#         plt.title(f"S00{j+2} {omega_labels[i]}")
+#         plt.xlabel(r'$c$ [kg/m$^2$]')
+#         plt.ylabel(r'$b$ [-]')
+#         plt.ylim(0, 1.1)
+#         plt.xlim(0, 0.3)
+#         plt.grid(True)
+#         plt.legend()
+#     plt.tight_layout()
+#     plt.show()
+    
+# for i in range(5): #Omega
+#     plt.figure(figsize=(8, 8))
+#     for j in range(5): #Shields
+#         plt.subplot(3, 2, j+1)
+#         index_byS = i*5+j 
+#         Md_dpm = Md_all_S[index_byS]
+#         b_dpm = compute_b(Md_dpm, C_all_S[index_byS], U_all_S[index_byS], Ua_all_S[index_byS])
+#         plt.plot(U_all_S[index_byS], b_dpm, 'o', label='DPM')
+#         plt.title(f"S00{j+2} {omega_labels[i]}")
+#         plt.xlabel(r'$U$ [m/s]')
+#         plt.ylabel(r'$b$ [-]')
+#         plt.ylim(0, 1.1)
+#         plt.xlim(0, 9)
+#         plt.grid(True)
+#         plt.legend()
+#     plt.tight_layout()
+#     plt.show()    
