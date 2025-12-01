@@ -10,6 +10,7 @@ from scipy.integrate import solve_ivp
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
 from scipy.optimize import curve_fit
+import math
 
 ### FROM Ua to FD; Calibrate expression of mom_drag
 h = 0.2 - 0.00025*13.5
@@ -44,6 +45,14 @@ def drag_model_ori(x, Cref, Cref_urel):
     Cd = (np.sqrt(Cd_inf)+np.sqrt(Ruc/Re))**2   
     fdrag = np.pi/8 * D**2 * rho_air * Urel * abs(Urel) * Cd
     return fdrag
+
+def CalMdrag(x, b):
+    Ua, U, c = x
+    Urel = b * Ua - U
+    Re = abs(Urel)*D/nu_a
+    Cd = (np.sqrt(Cd_inf)+np.sqrt(Ruc/Re))**2   
+    Mdrag = np.pi/8 * D**2 * rho_air * Urel * abs(Urel) * Cd * c/mp
+    return Mdrag
 
 def CalUrel(x, Cref, Cref_urel):
     Ua, U, c = x
@@ -91,62 +100,11 @@ def compute_b(Mdrag, c, U, Ua, max_iter=50, tol=1e-6):
 
     return b
 
-def Fitb(U, b0, b_inf, k):
+def Fitb(x, b0, b_inf, k0, lamda):
+    U, c = x
+    k = k0/(1+lamda*c)
     b = b0 + (b_inf - b0)*(1 - np.exp(-k*U))
     return b
-
-def BinfdUa(Ua, fd, U, Uabin):
-    Ua = np.asarray(Ua, dtype=float)
-    fd = np.asarray(fd, dtype=float)
-    U  = np.asarray(U, dtype=float)
-    edges = np.asarray(Uabin, dtype=float)
-
-    if Ua.shape != fd.shape:
-        raise ValueError("Ua and fd must have the same shape.")
-    if edges.ndim != 1 or edges.size < 2:
-        raise ValueError("Uabin must be a 1D array of length >= 2 (bin edges).")
-    if not np.all(np.diff(edges) > 0):
-        raise ValueError("Uabin must be strictly increasing.")
-
-    # keep only finite pairs
-    m = np.isfinite(Ua) & np.isfinite(fd)
-    Ua = Ua[m]
-    fd = fd[m]
-    U = U[m]
-
-    nbins = edges.size - 1
-    fd_mean   = np.full(nbins, np.nan, dtype=float)
-    fd_se     = np.full(nbins, np.nan, dtype=float)
-    U_mean    = np.full(nbins, np.nan, dtype=float)
-    Ua_mean = np.full(nbins, np.nan, dtype=float)
-
-    for i in range(nbins):
-        lo, hi = edges[i], edges[i+1]
-        # right-inclusive on the last bin
-        if i < nbins - 1:
-            sel = (Ua >= lo) & (Ua < hi)
-        else:
-            sel = (Ua >= lo) & (Ua <= hi)
-
-        if not np.any(sel):
-            continue
-
-        fd_i = fd[sel]
-        Ua_i = Ua[sel]
-        U_i = U[sel]
-        n = fd_i.size
-
-        fd_mean[i] = np.mean(fd_i)
-        U_mean[i] = np.mean(U_i)
-        if n > 1:
-            sd = np.std(fd_i, ddof=1)
-            se = sd / np.sqrt(n)
-            fd_se[i] = np.nan if se == 0 else se
-        else:
-            fd_se[i] = np.nan
-
-        Ua_mean[i] = np.mean(Ua_i)
-    return fd_mean, fd_se, U_mean, Ua_mean
 
 def weighted_r2(y_true, y_pred, weights):
     y_avg = np.average(y_true, weights=weights)
@@ -159,8 +117,60 @@ def r2_score(y, ypred):
     ss_tot = np.sum((y - np.mean(y))**2)
     return 1.0 - ss_res/ss_tot
 
+def BinbandU(U, b, Ubin):
+    b = np.asarray(b, dtype=float)
+    U  = np.asarray(U, dtype=float)
+    edges = np.asarray(Ubin, dtype=float)
+
+    if U.shape != b.shape:
+        raise ValueError("U and b must have the same shape.")
+    if edges.ndim != 1 or edges.size < 2:
+        raise ValueError("Ubin must be a 1D array of length >= 2 (bin edges).")
+    if not np.all(np.diff(edges) > 0):
+        raise ValueError("Uabin must be strictly increasing.")
+
+    # keep only finite pairs
+    m = np.isfinite(U) & np.isfinite(b)
+    U = U[m]
+    b = b[m]
+
+    nbins = edges.size - 1
+    b_mean   = np.full(nbins, np.nan, dtype=float)
+    b_se     = np.full(nbins, np.nan, dtype=float)
+    U_mean    = np.full(nbins, np.nan, dtype=float)
+
+    for i in range(nbins):
+        lo, hi = edges[i], edges[i+1]
+        # right-inclusive on the last bin
+        if i < nbins - 1:
+            sel = (U >= lo) & (U < hi)
+        else:
+            sel = (U >= lo) & (U <= hi)
+
+        if not np.any(sel):
+            continue
+
+        b_i = b[sel]
+        U_i = U[sel]
+        n = b_i.size
+
+        b_mean[i] = np.mean(b_i)
+        U_mean[i] = np.mean(U_i)
+        if n > 1:
+            sd = np.std(b_i, ddof=1)
+            se = sd / np.sqrt(n)
+            b_se[i] = np.nan if se == 0 else se
+        else:
+            b_se[i] = np.nan
+
+        U_mean[i] = np.mean(U_i)
+    return b_mean, b_se, U_mean
+
 C_all_S, U_all_S, Ua_all_S, MD_all_S, fd_ori, fd_ori_se, fd_com, Md_all_S, b_all_S = [], [], [], [], [], [], [], [], []
+Ubin_all_S, bbin_all_S, bbinse_all_S = [], [], []
 omega_labels = ['Dry', 'M1', 'M5', 'M10', 'M20']
+Omega = [0, 1, 5, 10, 20]
+
     # ---- Load data ----
 for label in omega_labels:
     for i in range(2, 7):
@@ -178,6 +188,8 @@ for label in omega_labels:
         # fd_dpm = MD*mp/C_dpm
         
         b_dpm = compute_b(MD, C_dpm, U_dpm, Ua_dpm)
+        # U_bin = np.linspace(min(U_dpm), max(U_dpm), math.ceil((max(U_dpm) - min(U_dpm)) / 0.5))
+        # b_mean, b_se, U_mean = BinbandU(U_dpm, b_dpm, U_bin)
         
         # Combine
         U_all_S.append(U_dpm)
@@ -186,45 +198,111 @@ for label in omega_labels:
         # fd_ori.append(fd_dpm)
         Md_all_S.append(MD)
         b_all_S.append(b_dpm)
+        
+        # binned
+        # Ubin_all_S.append(U_mean)
+        # bbin_all_S.append(b_mean)
+        # bbinse_all_S.append(b_se)
 
 U_all = np.concatenate(U_all_S)
-Ua_all = np.concatenate(Ua_all_S)
+# Ureal_all = np.concatenate(U_all_S)
+# Ua_all = np.concatenate(Ua_all_S)
 C_all = np.concatenate(C_all_S)
 # fd_all = np.concatenate(fd_ori)
+# breal_all = np.concatenate(b_all_S)
 b_all = np.concatenate(b_all_S)
-mask = np.isfinite(U_all) & np.isfinite(b_all) 
-U_all, b_all = U_all[mask], b_all[mask]
+# bse_all = np.concatenate(bbinse_all_S)
 
-popt, _ = curve_fit(Fitb, U_all, b_all, absolute_sigma=True, maxfev=20000)
-b0, b_inf, k = popt
-print(f'b0={b0:.2f}, b_inf={b_inf:.2f}, k = {k:.2f}')
+mask = np.isfinite(U_all) & np.isfinite(b_all) & np.isfinite(C_all)
+U_all, b_all, C_all = U_all[mask], b_all[mask], C_all[mask]
+
+popt, _ = curve_fit(Fitb, [U_all, C_all], b_all, absolute_sigma=True, maxfev=20000)
+b0, b_inf, k0, lamda = popt
+print(f'b0={b0:.2f}, b_inf={b_inf:.2f}, k0 = {k0:.2f}, lamda = {lamda:.2f}')
 
 # Cref, Cref_urel = 1.0, 0.024#1.0, 0.0088
-b_pred = Fitb(U_all, b0, b_inf, k)
+b_pred = Fitb([U_all, C_all], b0, b_inf, k0, lamda)
 r2 = r2_score(b_all, b_pred)
 print('r2', r2)
 
 plt.close('all')
 # Cref, Cref_urel = 1.0, 0.024#1.0, 0.0088
 for i in range(5): #Omega
-    plt.figure(figsize=(10, 8))
+    plt.figure(figsize=(12, 8))
     for j in range(5): #Shields
         plt.subplot(3, 2, j+1)
         index_byS = i*5+j 
-        b_com = Fitb(U_all_S[index_byS], b0, b_inf, k)
-        plt.plot(U_all_S[index_byS], b_all_S[index_byS], 'o', label='DPM')
-        plt.plot(U_all_S[index_byS], b_com, 'o', label='fit')
-        plt.title(f"S00{j+2} {omega_labels[i]}")
-        plt.xlabel(r'$U$ [m/s]')
+        b_com = Fitb([U_all_S[index_byS], C_all_S[index_byS]], b0, b_inf, k0, lamda)
+        plt.plot(U_all_S[index_byS], b_all_S[index_byS], 'o', label=r'DPM $\hat{b}$ = f($\hat{M}_{drag}$, $\hat{U}_a$, $\hat{U}$, $\hat{c}$)')
+        plt.plot(U_all_S[index_byS], b_com, 'o', label=r'Computed $b = b_{0} + (b_{inf} - b_{0})\cdot(1 - \exp(-k\hat{U}))$''\n' r'$k = k_0/(1+\lambda \hat{c})$')
+        plt.title(fr"$\tilde{{\Theta}}$=0.0{j+2}, $\Omega$={Omega[i]}%")
+        plt.xlabel(r'$\hat{U}$ [m/s]')
         plt.ylabel(r'$b$ [-]')
+        plt.ylim(0, 1.3)
+        plt.xlim(0, 10)
+        plt.grid(True)
+        if j == 0:
+            plt.legend(fontsize=9, loc='lower right')
+    plt.tight_layout()
+    plt.show()
+    
+for i in range(5): #Omega
+    plt.figure(figsize=(12, 8))
+    for j in range(5): #Shields
+        plt.subplot(3, 2, j+1)
+        index_byS = i*5+j 
+        b_com = Fitb([U_all_S[index_byS], C_all_S[index_byS]], b0, b_inf, k0, lamda)
+        plt.plot(t, b_all_S[index_byS], 'o', label=r'DPM $\hat{b}$ = f($\hat{M}_{drag}$, $\hat{U}_a$, $\hat{U}$, $\hat{c}$)')
+        plt.plot(t, b_com, 'o', label=r'Computed $b = b_{0} + (b_{inf} - b_{0})\cdot(1 - \exp(-k\hat{U}))$''\n' r'$k = k_0/(1+\lambda \hat{c})$')
+        plt.title(fr"$\tilde{{\Theta}}$=0.0{j+2}, $\Omega$={Omega[i]}%")
+        plt.xlabel(r'$t$ [s]')
+        plt.ylabel(r'$b$ [-]')
+        plt.ylim(0, 1.5)
+        plt.xlim(0, 5)
+        plt.grid(True)
+        if j == 0:
+            plt.legend(fontsize=9, loc='upper right')
+    plt.tight_layout()
+    plt.show()
+    
+# plot to find out the dependence of c/U on b    
+for i in range(5): #Omega
+    plt.figure(figsize=(8, 8))
+    for j in range(5): #Shields
+        plt.subplot(3, 2, j+1)
+        index_byS = i*5+j 
+        Md_dpm = Md_all_S[index_byS]
+        b_dpm = compute_b(Md_dpm, C_all_S[index_byS], U_all_S[index_byS], Ua_all_S[index_byS])
+        plt.plot(C_all_S[index_byS], b_dpm, 'o', label='DPM')
+        plt.title(fr"$\tilde{{\Theta}}$=0.0{j+2}, $\Omega$={Omega[i]}%")
+        plt.xlabel(r'$\hat{c}$ [kg/m$^2$]')
+        plt.ylabel(r'$\hat{b}$ [-]')
         plt.ylim(0, 1.1)
-        plt.xlim(0, 9)
+        plt.xlim(0, 0.3)
         plt.grid(True)
         plt.legend()
     plt.tight_layout()
     plt.show()
     
-# plot to find out the dependence of c/U on b    
+for i in range(5): #Omega
+    plt.figure(figsize=(8, 8))
+    for j in range(5): #Shields
+        plt.subplot(3, 2, j+1)
+        index_byS = i*5+j 
+        Md_dpm = Md_all_S[index_byS]
+        b_dpm = compute_b(Md_dpm, C_all_S[index_byS], U_all_S[index_byS], Ua_all_S[index_byS])
+        plt.plot(U_all_S[index_byS], b_dpm, 'o', label='DPM')
+        plt.title(fr"$\tilde{{\Theta}}$=0.0{j+2}, $\Omega$={Omega[i]}%")
+        plt.xlabel(r'$\hat{U}$ [m/s]')
+        plt.ylabel(r'$\hat{b}$ [-]')
+        plt.ylim(0, 1.1)
+        plt.xlim(0, 9)
+        plt.grid(True)
+        plt.legend()
+    plt.tight_layout()
+    plt.show()    
+
+# plot b,U,c - t
 # for i in range(5): #Omega
 #     plt.figure(figsize=(8, 8))
 #     for j in range(5): #Shields
@@ -232,31 +310,35 @@ for i in range(5): #Omega
 #         index_byS = i*5+j 
 #         Md_dpm = Md_all_S[index_byS]
 #         b_dpm = compute_b(Md_dpm, C_all_S[index_byS], U_all_S[index_byS], Ua_all_S[index_byS])
-#         plt.plot(C_all_S[index_byS], b_dpm, 'o', label='DPM')
+#         plt.plot(t, b_dpm, 'o', label=r'$\hat{b}$')
+#         plt.plot(t, U_all_S[index_byS], 'o', label=r'$\hat{U}$')
+#         plt.plot(t, C_all_S[index_byS], 'o', label=r'$\hat{c}$')
 #         plt.title(f"S00{j+2} {omega_labels[i]}")
-#         plt.xlabel(r'$c$ [kg/m$^2$]')
-#         plt.ylabel(r'$b$ [-]')
-#         plt.ylim(0, 1.1)
-#         plt.xlim(0, 0.3)
+#         plt.xlabel(r'$t$ [s]')
+#         plt.ylabel(r'$\hat{b}$, $\hat{U}$, $\hat{c}$')
+#         plt.ylim(0, 10.0)
+#         plt.xlim(0, 5)
+#         plt.grid(True)
+#         plt.legend()
+#     plt.tight_layout()
+#     plt.show()    
+
+# for i in range(5): #Omega
+#     plt.figure(figsize=(10, 8))
+#     for j in range(5): #Shields
+#         plt.subplot(3, 2, j+1)
+#         index_byS = i*5+j 
+#         b_com = Fitb([U_all_S[index_byS], C_all_S[index_byS]], b0, b_inf, k0, lamda)
+#         Mdrag = CalMdrag([Ua_all_S[index_byS], U_all_S[index_byS], C_all_S[index_byS]], b_com)
+#         plt.plot(t, Md_all_S[index_byS], 'o', label=r'DPM $\hat{M}_{drag}$')
+#         plt.plot(t, Mdrag, 'o', label='Computed $M_{drag}=f(\hat{U_{a}}, \hat{U}, \hat{c}, $b$)$')
+#         plt.title(f"S00{j+2} {omega_labels[i]}")
+#         plt.xlabel(r'$t$ [s]')
+#         plt.ylabel(r'$M_{drag}$ [N/m$^2$]')
+#         plt.ylim(0, 2.2)
+#         plt.xlim(0, 5)
 #         plt.grid(True)
 #         plt.legend()
 #     plt.tight_layout()
 #     plt.show()
     
-# for i in range(5): #Omega
-#     plt.figure(figsize=(8, 8))
-#     for j in range(5): #Shields
-#         plt.subplot(3, 2, j+1)
-#         index_byS = i*5+j 
-#         Md_dpm = Md_all_S[index_byS]
-#         b_dpm = compute_b(Md_dpm, C_all_S[index_byS], U_all_S[index_byS], Ua_all_S[index_byS])
-#         plt.plot(U_all_S[index_byS], b_dpm, 'o', label='DPM')
-#         plt.title(f"S00{j+2} {omega_labels[i]}")
-#         plt.xlabel(r'$U$ [m/s]')
-#         plt.ylabel(r'$b$ [-]')
-#         plt.ylim(0, 1.1)
-#         plt.xlim(0, 9)
-#         plt.grid(True)
-#         plt.legend()
-#     plt.tight_layout()
-#     plt.show()    
