@@ -21,11 +21,15 @@ kappa = 0.4
 rho_a = 1.225
 rho_sand = 2650
 nu_a = 1.46e-5
+Ruc = 24
+Cd_inf = 0.5
 Shields = np.linspace(0.02, 0.06, 5)
 u_star = np.sqrt(Shields * (2650-1.225)*9.81*D/1.225)
 mp = 2650 * np.pi/6 * D**3 #particle mass
 t = np.linspace(0, 5, 501)
 dt = np.mean(np.diff(t))
+#-------- check values!!!! -------
+b0, b_inf, k0, lamda = 0.04, 0.85, 0.81, 7.71
 
 def r2_score(y, ypred):
     ss_res = np.sum((y - ypred)**2)
@@ -37,58 +41,38 @@ def r2_score(y, ypred):
 #     tau_bed = rho_a * (nu_a + (l_eff**2) * np.abs(Ua_arr)/h) * Ua_arr / h
 #     return tau_bed * (1-phi_b)
 
-def tau_bed_dragform(x, beta, K):
-    Ua, U, c = x
-    Uabed = beta*Ua
-    tau_b_oneminusphib = rho_a * K * c/(rho_sand*D) * abs(Uabed-U) * (Uabed-U) 
-    return tau_b_oneminusphib
-
-def MD_eff(x, B, p):
-    Ua, U, c, ustar_i = x
-    Urel = Cal_Urel(Ua, U, Omega)
-    # MD_eff = rho_a * K * c/(rho_sand*D) *abs(Uaeff - U) * (Uaeff - U)
-    Re = abs(Urel)*D/nu_a
-    Ruc = 24
-    Cd_inf = 0.5
-    Cd = (np.sqrt(Cd_inf)+np.sqrt(Ruc/Re))**2 
-    Mdrag = np.pi/8 * D**2 * rho_a * Urel * abs(Urel) * Cd * c/mp
-    
-    tau_basic = rho_a * ustar_i**2 
-    CD_bed = 0.0037
-    tau_basic = 0.5 * rho_a * CD_bed * Ua * abs(Ua)
-    M_tune = tau_basic * (1/(1+(B*Mdrag)**p))
-    M_final = Mdrag + M_tune
-    return M_final#, Mdrag, M_tune
-
-def Cal_Urel(Ua, U, Omega):
-    if Omega == 0:
-        b_Ua = 0.30
-        b_U = 0.40
-    else:
-        b_Ua = 0.40
-        b_U = 0.30
-    Urel = b_Ua*Ua - b_U*U
-    return Urel
-
-# def Cal_Mdrag(x, b, CD):
-#     Ua, U = x
-#     ueff = b*Ua
-#     U_rel = ueff - U
-#     return np.pi*D**2/8 * rho_a * CD * np.abs(U_rel) * U_rel  
-
-# def Mairbed(x, Cd_bed):
+# def tau_bed_dragform(x, beta, K):
 #     Ua, U, c = x
-#     # Uaeff = 0.32*Ua
-#     # Urel = Uaeff - U
-#     # Re = Urel*D/nu_a
-#     # Ruc = 24
-#     # Cd_inf = 0.5
-#     # Cd = (np.sqrt(Cd_inf)+np.sqrt(Ruc/Re))**2
-#     # Agrain = np.pi*(D/2)**2
-#     # Mdrag = rho_a * Cd * Agrain * abs(Uaeff - U) * (Uaeff - U) * c/mp
-#     Mbed_air_only = 0.5*rho_a*Ua*abs(Ua)*Cd_bed 
-#     # Msink = Mbed_air_only*(1/(1+(B*Mdrag)**p))
-#     return Mbed_air_only
+#     Uabed = beta*Ua
+#     tau_b_oneminusphib = rho_a * K * c/(rho_sand*D) * abs(Uabed-U) * (Uabed-U) 
+#     return tau_b_oneminusphib
+
+def CalMbedfriction(x, A, B):
+    U, Mdrag = x
+    # b = Fitb((U, c), b0, b_inf, k0, lamda)
+    # Mdrag = CalMdrag((Ua, U, c), b)
+
+    # tau_basic = 0.5 * rho_a * 0.0037 * Ua * abs(Ua)
+    # M_tune = tau_basic * (1/(1+B*Mdrag)**p)
+    
+    # A = A0 + A1/U
+    # B = B0 + B1*U
+    Mbed = A*Mdrag + B
+    return Mbed 
+
+# def CalMdrag(x, b):
+#     Ua, U, c = x
+#     Urel = b * Ua - U
+#     Re = abs(Urel)*D/nu_a
+#     Cd = (np.sqrt(Cd_inf)+np.sqrt(Ruc/Re))**2   
+#     Mdrag = np.pi/8 * D**2 * rho_a * Urel * abs(Urel) * Cd * c/mp
+#     return Mdrag
+
+# def Fitb(x, b0, b_inf, k0, lamda):
+#     U, c = x
+#     k = k0/(1+lamda*c)
+#     b = b0 + (b_inf - b0)*(1 - np.exp(-k*U))
+#     return b
 
 def weighted_r2(y_true, y_pred, weights):
     y_avg = np.average(y_true, weights=weights)
@@ -96,148 +80,164 @@ def weighted_r2(y_true, y_pred, weights):
     ss_tot = np.sum(weights * (y_true - y_avg)**2)
     return 1 - ss_res / ss_tot
 
-Ua_bin = np.linspace(0, 13, 31)
 # Containers for storing results
 Ua_all_S, U_all_S, c_all_S = [], [], []
 RHS_se_all_S, RHS_all_S, LHS_all_S = [], [], []
 Uat_all_S , LHSt_all_S, RHSt_all_S = [], [], []
-duadt_all_S = []
+duadt_all_S, MD_all_S = [], []
 
-# Loop over conditions S002 to S006
-for i in range(2, 7):
-    shields_val = i * 0.01  # Convert index to Shields value
-    
-    # ---- Load data ----
-    file_ua = f'TotalDragForce/Ua-t/Uair_ave-tS00{i}M20.txt'
-    Ua_dpm = np.loadtxt(file_ua, delimiter='\t')[:, 1]
-    Ua0 = Ua_dpm[0]
-    dUa_dt = np.gradient(Ua_dpm, dt) 
+omega_labels = ['Dry', 'M1', 'M5', 'M10', 'M20']
+Omega = [0, 1, 5, 10, 20]
 
-    # file_fd = f'TotalDragForce/Mdrag/FD_S00{i}Dry.txt'
-    # data_FD = np.loadtxt(file_fd)
-    # FD_dpm = data_FD
+# ---- Load data ----
+for label in omega_labels:
+    for i in range(2, 7):
+        file_ua = f'TotalDragForce/Ua-t/Uair_ave-tS00{i}{label}.txt'
+        Ua_dpm = np.loadtxt(file_ua, delimiter='\t')[:, 1]
+        Ua0 = Ua_dpm[0]
+        dUa_dt = np.gradient(Ua_dpm, dt) 
+        
+        file_c = f'CGdata/hb=13.5d/Shields00{i}{label}-135d.txt'
+        data_dpm = np.loadtxt(file_c)
+        c_dpm = data_dpm[:, 1]
+        U_dpm = data_dpm[:, 2]
+        phi = c_dpm/(rho_sand*h)
+        
+        file_MD = f'TotalDragForce/Mdrag/FD_S00{i}{label}.txt'
+        Mdrag_dpm = np.loadtxt(file_MD)
+        
+        #---- compute RHS-t and binned RHS ----
+        tau_top = np.ones(len(dUa_dt))*rho_a*u_star[i-2]**2
+        RHS_t = tau_top - rho_a * h * dUa_dt * (1-phi) - Mdrag_dpm
+        # RHS_binned, RHS_se, U_binned, c_binned, Ua_binned = BintaubUa(Ua_dpm, U_dpm, c_dpm, RHS_t, Ua_bin)
+        
+        #----- compute LHS-t with the optimised parameters -----
+        # LHS_t = tau_bed_dragform((Ua_dpm, U_dpm, c_dpm), 1.58, 0.08)
     
-    file_c = f'CGdata/hb=13.5d/Shields00{i}M20-135d.txt'
-    data_dpm = np.loadtxt(file_c)
-    c_dpm = data_dpm[:, 1]
-    U_dpm = data_dpm[:, 2]
-    phi = c_dpm/(rho_sand*h)
-    
-    #---- compute RHS-t and binned RHS ----
-    tau_top = np.ones(len(dUa_dt))*rho_a*u_star[i-2]**2
-    # RHS_t = tau_top-FD_dpm-rho_a * h * (1-phi) * dUa_dt
-    RHS_t = tau_top - rho_a * h * dUa_dt * (1-phi) # combining the tau_bed and MD into one term
-    # RHS_binned, RHS_se, U_binned, c_binned, Ua_binned = BintaubUa(Ua_dpm, U_dpm, c_dpm, RHS_t, Ua_bin)
-    
-    #----- compute LHS-t with the optimised parameters -----
-    # LHS_t = tau_bed_dragform((Ua_dpm, U_dpm, c_dpm), 1.58, 0.08)
-
-    # ---- Store results ----
-    # first time-varying values
-    Ua_all_S.append(Ua_dpm)
-    U_all_S.append(U_dpm)
-    c_all_S.append(c_dpm)
-    RHS_all_S.append(RHS_t)
-    duadt_all_S.append(dUa_dt*rho_a * h *(1-phi))
+        # ---- Store results ----
+        # first time-varying values
+        Ua_all_S.append(Ua_dpm)
+        U_all_S.append(U_dpm)
+        c_all_S.append(c_dpm)
+        MD_all_S.append(Mdrag_dpm)
+        RHS_all_S.append(RHS_t)
+        duadt_all_S.append(dUa_dt*rho_a * h *(1-phi))
 
 Ua_all= np.concatenate(Ua_all_S)
 U_all= np.concatenate(U_all_S)
 c_all= np.concatenate(c_all_S)
+MD_all = np.concatenate(MD_all_S)
 RHS_all = np.concatenate(RHS_all_S)
-# mask = np.isfinite(Ua_all) & np.isfinite(RHS_all) 
-# Ua_all, RHS_all = Ua_all[mask], RHS_all[mask]
-# U_all, c_all = U_all[mask], c_all[mask]
-u_star_vec = np.repeat(u_star, 501)
+ustar_block = np.repeat(u_star, 501)   # one block of 5×501 = 2505 elements
+ustar_vec = np.tile(ustar_block, 5)   # repeat the block 5 times
+mask = np.isfinite(Ua_all) & np.isfinite(U_all) & np.isfinite(c_all) & np.isfinite(RHS_all) & np.isfinite(MD_all)
+Ua_all, RHS_all, MD_all = Ua_all[mask], RHS_all[mask], MD_all[mask]
+U_all, c_all = U_all[mask], c_all[mask]
+ustar_vec = ustar_vec[mask]
 
-Omega = 0.2
-# popt, _ = curve_fit(MD_eff, (Ua_all, U_all, c_all, u_star_vec), RHS_all, maxfev=10000)
-# B, p = popt
-# print('B', B, 'p', p)
-# RHS_pred = MD_eff((Ua_all, U_all, c_all, u_star_vec), B, p)
-# r2 = r2_score(RHS_all, RHS_pred)
-# print('r2', r2)
+popt, _ = curve_fit(CalMbedfriction, (U_all, MD_all), RHS_all, maxfev=10000)
+A, B = popt
+print(f'A={A:.2f}, B={B:.2f}')
+RHS_pred = CalMbedfriction((U_all, MD_all), A, B)
+r2 = r2_score(RHS_all, RHS_pred)
+print('r2', r2)
     
 # ---- Plotting ----
-B, p = 3.5, 7.0
-
 plt.close('all')
-plt.figure(figsize=(12, 10))
-for i in range(5):
-    plt.subplot(3, 2, i + 1)
-    LHS = MD_eff((Ua_all_S[i], U_all_S[i], c_all_S[i], u_star[i]), B, p)
-    plt.plot(Ua_all_S[i], RHS_all_S[i], '.', label='DPM')
-    plt.plot(Ua_all_S[i], LHS, '.', label='proposed')
-    plt.title(f"S00{i+2} $\Omega$={Omega*100}$\%$")
-    plt.xlabel("Ua [m/s]")
-    plt.ylabel(r"$M_{D,eff}$ [N/m$^2$]")
-    plt.ylim(0,6)
-    plt.xlim(0,13.5)
-    plt.grid(True)
-    plt.legend()
-plt.suptitle(f"B={B:.2f}, p={p:.2f}")
-plt.tight_layout()
-plt.show()
+for i in range(5): #Omega
+    plt.figure(figsize=(10, 8))
+    for j in range(5): #Shields
+        plt.subplot(3, 2, j+1)
+        index_byS = i*5+j 
+        Mbedfriction = CalMbedfriction((U_all_S[index_byS], MD_all_S[index_byS]), A, B)
+        plt.plot(t, RHS_all_S[index_byS], '.', label='DPM $\hat{M}_{bedfriction}$')
+        plt.plot(t, Mbedfriction, '.', label=r'Computed $M_{bedfriction}$')
+        plt.title(fr"$\tilde{{\Theta}}$=0.0{j+2}, $\Omega$={Omega[i]}%")
+        plt.xlabel("t [s]")
+        plt.ylabel(r"$\hat{M}_{bedfriction}$ [N/m$^2$]")
+        plt.ylim(0,2.5)
+        plt.xlim(0,5)
+        plt.grid(True)
+        if j == 0:
+            plt.legend(fontsize=9, loc='upper right')
+    plt.tight_layout()
+    plt.show()
 
-# plt.figure(figsize=(12, 10))
-# for i in range(5):
-#     plt.subplot(3, 2, i + 1)
-#     M, Mdrag_i, Mtune_i = MD_eff((Ua_all_S[i], U_all_S[i], c_all_S[i], u_star[i]), B, p)
-#     # plt.plot(Ua_all_S[i], RHS_all_S[i], '.', label='DPM')
-#     plt.plot(Ua_all_S[i], Mdrag_i, '.', label='Mdrag')
-#     plt.plot(Ua_all_S[i], Mtune_i, '.', label='Mtune')
-#     plt.title(f"S00{i+2} $\Omega$={Omega*100}$\%$")
-#     plt.xlabel("Ua [m/s]")
-#     plt.ylabel(r"$M_{D,eff}$ [N/m$^2$]")
-#     plt.ylim(0,2)
-#     plt.xlim(0,13.5)
-#     plt.grid(True)
-#     plt.legend()
-# plt.tight_layout()
-# plt.show()
+# for i in range(5): #Omega
+#     plt.figure(figsize=(10, 8))
+#     for j in range(5): #Shields
+#         plt.subplot(3, 2, j+1)
+#         index_byS = i*5+j 
+#         # Mbedfriction = CalMbedfriction((Ua_all_S[index_byS], U_all_S[index_byS], c_all_S[index_byS], MD_all_S[index_byS], u_star[j]), B, p)
+#         plt.plot(t, RHS_all_S[index_byS], '.', label='DPM $\hat{M}_{bedfriction}$')
+#         plt.plot(t, MD_all_S[index_byS], '.', label='DPM $\hat{M}_{drag}$')
+#         # plt.plot(t, Mbedfriction, '.', label=r'Computed $M_{bedfriction}$')
+#         plt.title(fr"$\tilde{{\Theta}}$=0.0{j+2}, $\Omega$={Omega[i]}%")
+#         plt.xlabel("t [s]")
+#         plt.ylabel(r"$\hat{M}_{bedfriction}$ and $\hat{M}_{drag}$ [N/m$^2$]")
+#         plt.ylim(0,2.5)
+#         plt.xlim(0,5)
+#         plt.grid(True)
+#         if j == 0:
+#             plt.legend(fontsize=9, loc='upper right')
+#     plt.tight_layout()
+#     plt.show()
+    
+# for i in range(5): #Omega
+#     plt.figure(figsize=(10, 8))
+#     for j in range(5): #Shields
+#         plt.subplot(3, 2, j+1)
+#         index_byS = i*5+j 
 
-# plt.figure(figsize=(12, 10))
-# for i in range(5):
-#     plt.subplot(3, 2, i + 1)
-#     LHS = MD_eff((Ua_all_S[i], U_all_S[i], c_all_S[i], u_star[i]), B, p)
-#     plt.plot(t, RHS_all_S[i], '.', label='DPM')
-#     plt.plot(t, LHS, '.', label='proposed')
-#     plt.title(f"S00{i+2} Dry")
-#     plt.xlabel("t [s]")
-#     plt.ylabel(r"$M_{D,eff}$ [N/m$^2$]")
-#     plt.ylim(0,6)
-#     plt.xlim(-0.1,5.1)
-#     plt.grid(True)
-#     plt.legend()
-# plt.tight_layout()
-# plt.show()
+#         N = len(MD_all_S[index_byS])
+#         t = np.linspace(0, 5, N)  # actual timestamps if uniformly sampled
 
-# plt.figure(figsize=(12, 10))
-# for i in range(5):
-#     plt.subplot(3, 2, i + 1)
-#     LHS = tau_bed_dragform((Ua_all_S[i], U_all_S[i], c_all_S[i]), beta, K)
-#     plt.errorbar(Ua_all_S[i], RHS_all_S[i], yerr=RHS_se_all[i], fmt='o', capsize=5, label='DPM')
-#     plt.plot(Ua_all_S[i], LHS, 'o', label='fit')
-#     plt.title(f"S00{i+2} Dry")
-#     plt.xlabel("Ua [m/s]")
-#     plt.ylabel(r"$\tau_b(1-\phi_b)$ [N/m$^2$]")
-#     plt.ylim(0,3)
-#     plt.xlim(0,13)
-#     plt.grid(True)
-#     plt.legend()
-# plt.tight_layout()
-# plt.show()
+#         sc = plt.scatter(
+#             MD_all_S[index_byS], 
+#             RHS_all_S[index_byS], 
+#             c=t, 
+#             cmap='viridis', 
+#             s=10
+#         )
 
-# plt.figure(figsize=(6, 5))
-# for i in range(5):
-#     plt.plot(Ua_dpm_all[i], RHS_all[i], '.', label=f'Shields=0.0{i+2}')
-# plt.xlabel("Ua [m/s]")
-# plt.ylabel(r"$\tau_b(1-\phi_b)$ [N/m$^2$]")
-# # plt.ylabel(r'$\tau_b=CD_b|cU_a|cU_a$ [N/m$^2$]')
-# plt.ylim(0,3)
-# plt.xlim(0, 13)
+#         plt.title(fr"$\tilde{{\Theta}}$=0.0{j+2}, $\Omega$={Omega[i]}%")
+#         plt.xlabel(r"$\hat{M}_{drag}$ [N/m$^2$]")
+#         plt.ylabel(r"$\hat{M}_{bedfriction}$ [N/m$^2$]")
+#         plt.ylim(0,2.5)
+#         plt.xlim(0,2.5)
+#         plt.grid(True)
+
+#         if j == 0:
+#             cbar = plt.colorbar(sc)
+#             cbar.set_label("time [s]")
+#     plt.tight_layout()
+#     plt.show()
+
+# plt.figure(figsize=(6,6))
+# plt.subplot(2,1,1)
+# plt.plot(t, RHS_all_S[24], '.', label='DPM $\hat{M}_{bedfriction}$')
+# plt.plot(t, MD_all_S[24], '.', label='DPM $\hat{M}_{drag}$')
+# plt.plot(t, U_all_S[24], '.', label='DPM $\hat{U}$')
+# plt.xlabel('t [s]')
+# plt.subplot(2,1,2)
+# sc = plt.scatter(
+#             MD_all_S[24], 
+#             RHS_all_S[24], 
+#             c=t, 
+#             cmap='viridis', 
+#             s=10
+#         )
+# cbar = plt.colorbar(sc)
+# cbar.set_label("time [s]")
+# plt.xlabel(r"$\hat{M}_{drag}$ [N/m$^2$]")
+# plt.ylabel(r"$\hat{M}_{bedfriction}$ [N/m$^2$]")
 # plt.grid(True)
-# plt.legend()
+# plt.suptitle('Shields=0.06, Omega=20%')
 # plt.tight_layout()
+
+   
+# diagram showing how Mbedfriction changes with Mdrag
+     
 
 # def BintaubUa(Ua, U, c, RHS, Uabin):
 #     Ua = np.asarray(Ua, dtype=float)
