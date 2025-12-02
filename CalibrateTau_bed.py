@@ -50,18 +50,18 @@ def r2_score(y, ypred):
 #     tau_b_oneminusphib = rho_a * K * c/(rho_sand*D) * abs(Uabed-U) * (Uabed-U) 
 #     return tau_b_oneminusphib
 
-def CalMbedfriction(x, B, p):
-    Ua, U, c = x
-    b = Fitb((U, c), b0, b_inf, k0, lamda)
-    Mdrag = CalMdrag((Ua, U, c), b)
+def CalMbedfriction(x, A, B):
+    U, Mdrag = x
+    # b = Fitb((U, c), b0, b_inf, k0, lamda)
+    # Mdrag = CalMdrag((Ua, U, c), b)
 
-    tau_basic = 0.5 * rho_a * 0.0037 * Ua * abs(Ua)
-    Mbed = tau_basic * (1/(1+B*Mdrag)**p)
+    # tau_basic = 0.5 * rho_a * 0.0037 * Ua * abs(Ua)
+    # M_tune = tau_basic * (1/(1+B*Mdrag)**p)
     
     # A = A0 + A1/U
     # B = B0 + B1*U
-    # Mbed = A*Mdrag + B
-    return Mbed + Mdrag
+    Mbed = A*Mdrag + B
+    return Mbed 
 
 def CalMdrag(x, b):
     Ua, U, c = x
@@ -111,7 +111,7 @@ for label in omega_labels:
         
         #---- compute RHS-t and binned RHS ----
         tau_top = np.ones(len(dUa_dt))*rho_a*u_star[i-2]**2
-        RHS_t = tau_top - rho_a * h * dUa_dt * (1-phi) #- Mdrag_dpm
+        RHS_t = tau_top - rho_a * h * dUa_dt * (1-phi) - Mdrag_dpm
         # RHS_binned, RHS_se, U_binned, c_binned, Ua_binned = BintaubUa(Ua_dpm, U_dpm, c_dpm, RHS_t, Ua_bin)
         
         #----- compute LHS-t with the optimised parameters -----
@@ -139,56 +139,34 @@ Ua_all, RHS_all, MD_all = Ua_all[mask], RHS_all[mask], MD_all[mask]
 U_all, c_all = U_all[mask], c_all[mask]
 ustar_vec = ustar_vec[mask]
 
-popt, _ = curve_fit(CalMbedfriction, (Ua_all, U_all, c_all), RHS_all, maxfev=10000)
-B, p = popt
-print(f'B={B:.2f}, p={p:.2f}')
-RHS_pred = CalMbedfriction((Ua_all, U_all, c_all), B, p)
+popt, _ = curve_fit(CalMbedfriction, (U_all, MD_all), RHS_all, maxfev=10000)
+A, B = popt
+print(f'A={A:.2f}, B={B:.2f}')
+RHS_pred = CalMbedfriction((U_all, MD_all), A, B)
 r2 = r2_score(RHS_all, RHS_pred)
 print('r2', r2)
     
 # ---- Plotting ----
-plt.close('all')
+plt.close('all') 
+    
 for i in range(5): #Omega
     plt.figure(figsize=(10, 8))
     for j in range(5): #Shields
         plt.subplot(3, 2, j+1)
         index_byS = i*5+j 
-        Mbedfriction = CalMbedfriction((Ua_all_S[index_byS], U_all_S[index_byS], c_all_S[index_byS]), B, p)
+        Mbedfriction = CalMbedfriction((U_all_S[index_byS], MD_all_S[index_byS]), A, B)
         plt.plot(t, RHS_all_S[index_byS], '.', label='DPM $\hat{M}_{bedfriction}$')
-        plt.plot(t, Mbedfriction, '.', label=r'Computed $M_{bed}')
-        # plt.plot(t, MD_all_S[index_byS], '.', label='DPM $\hat{M}_{drag}$')
-        # b = Fitb([U_all_S[index_byS], c_all_S[index_byS]], b0, b_inf, k0, lamda)
-        # Mdrag = CalMdrag([Ua_all_S[index_byS], U_all_S[index_byS], c_all_S[index_byS]], b)
-        # plt.plot(t, Mdrag, '.', label=r'Computed $M_{drag}$')
+        plt.plot(t, Mbedfriction, '.', label=r'Computed $M_{bedfriction}$')
         plt.title(fr"$\tilde{{\Theta}}$=0.0{j+2}, $\Omega$={Omega[i]}%")
         plt.xlabel("t [s]")
-        plt.ylabel(r"$\hat{M}_{bedfriction}$ and $\hat{M}_{drag}$ [N/m$^2$]")
+        plt.ylabel(r"$\hat{M}_{bedfriction}$ [N/m$^2$]")
         plt.ylim(0,2.5)
         plt.xlim(0,5)
         plt.grid(True)
         if j == 0:
             plt.legend(fontsize=9, loc='upper right')
     plt.tight_layout()
-    plt.show()        
-    
-# for i in range(5): #Omega
-#     plt.figure(figsize=(10, 8))
-#     for j in range(5): #Shields
-#         plt.subplot(3, 2, j+1)
-#         index_byS = i*5+j 
-#         Mbedfriction = CalMbedfriction((U_all_S[index_byS], MD_all_S[index_byS]), A, B)
-#         plt.plot(t, RHS_all_S[index_byS], '.', label='DPM $\hat{M}_{bedfriction}$')
-#         plt.plot(t, Mbedfriction, '.', label=r'Computed $M_{bedfriction}$')
-#         plt.title(fr"$\tilde{{\Theta}}$=0.0{j+2}, $\Omega$={Omega[i]}%")
-#         plt.xlabel("t [s]")
-#         plt.ylabel(r"$\hat{M}_{bedfriction}$ [N/m$^2$]")
-#         plt.ylim(0,2.5)
-#         plt.xlim(0,5)
-#         plt.grid(True)
-#         if j == 0:
-#             plt.legend(fontsize=9, loc='upper right')
-#     plt.tight_layout()
-#     plt.show()
+    plt.show()
 
 # for i in range(5): #Omega
 #     plt.figure(figsize=(10, 8))
