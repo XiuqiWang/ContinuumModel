@@ -18,7 +18,7 @@ D = 0.00025
 kappa = 0.4
 rho_air = 1.225
 rho_sand = 2650
-nu_a = 1.45e-6
+nu_a = 1.46e-5
 Ruc = 24
 Cd_inf = 0.5
 Shields = np.linspace(0.02, 0.06, 5)
@@ -26,25 +26,25 @@ u_star = np.sqrt(Shields * (2650-1.225)*9.81*D/1.225)
 t = np.linspace(0, 5, 501)
 mp = 2650 * np.pi/6 * D**3 #particle mass
 
-def drag_model(x, b_Ua, b_urel):
-    Ua, U, c = x
-    Urel = b_urel*(b_Ua * Ua - U)
-    Re = abs(Urel)*D/nu_a
-    Ruc = 24
-    Cd_inf = 0.5
-    Cd = (np.sqrt(Cd_inf)+np.sqrt(Ruc/Re))**2   
-    fdrag = np.pi/8 * D**2 * rho_air * Urel * abs(Urel) * Cd
-    return fdrag
+# def drag_model(x, b_Ua, b_urel):
+#     Ua, U, c = x
+#     Urel = b_urel*(b_Ua * Ua - U)
+#     Re = abs(Urel)*D/nu_a
+#     Ruc = 24
+#     Cd_inf = 0.5
+#     Cd = (np.sqrt(Cd_inf)+np.sqrt(Ruc/Re))**2   
+#     fdrag = np.pi/8 * D**2 * rho_air * Urel * abs(Urel) * Cd
+#     return fdrag
 
-def drag_model_ori(x, Cref, Cref_urel):
-    Ua, U, c = x
-    b_urel = 1/np.sqrt(1 + c/Cref_urel)
-    b_Ua = np.sqrt(1-c/(c+Cref))
-    Urel = b_urel*(b_Ua * Ua - U)
-    Re = abs(Urel)*D/nu_a
-    Cd = (np.sqrt(Cd_inf)+np.sqrt(Ruc/Re))**2   
-    fdrag = np.pi/8 * D**2 * rho_air * Urel * abs(Urel) * Cd
-    return fdrag
+# def drag_model_ori(x, Cref, Cref_urel):
+#     Ua, U, c = x
+#     b_urel = 1/np.sqrt(1 + c/Cref_urel)
+#     b_Ua = np.sqrt(1-c/(c+Cref))
+#     Urel = b_urel*(b_Ua * Ua - U)
+#     Re = abs(Urel)*D/nu_a
+#     Cd = (np.sqrt(Cd_inf)+np.sqrt(Ruc/Re))**2   
+#     fdrag = np.pi/8 * D**2 * rho_air * Urel * abs(Urel) * Cd
+#     return fdrag
 
 def CalMdrag(x, b):
     Ua, U, c = x
@@ -218,7 +218,7 @@ U_all, b_all, C_all = U_all[mask], b_all[mask], C_all[mask]
 
 popt, _ = curve_fit(Fitb, [U_all, C_all], b_all, absolute_sigma=True, maxfev=20000)
 b0, b_inf, k0, lamda = popt
-print(f'b0={b0:.2f}, b_inf={b_inf:.2f}, k0 = {k0:.2f}, lamda = {lamda:.2f}')
+print(f'b0={b0:.4f}, b_inf={b_inf:.4f}, k0 = {k0:.4f}, lamda = {lamda:.4f}')
 
 # Cref, Cref_urel = 1.0, 0.024#1.0, 0.0088
 b_pred = Fitb([U_all, C_all], b0, b_inf, k0, lamda)
@@ -246,61 +246,61 @@ for i in range(5): #Omega
     plt.tight_layout()
     plt.show()
     
-for i in range(5): #Omega
-    plt.figure(figsize=(12, 8))
-    for j in range(5): #Shields
-        plt.subplot(3, 2, j+1)
-        index_byS = i*5+j 
-        b_com = Fitb([U_all_S[index_byS], C_all_S[index_byS]], b0, b_inf, k0, lamda)
-        plt.plot(t, b_all_S[index_byS], 'o', label=r'DPM $\hat{b}$ = f($\hat{M}_{drag}$, $\hat{U}_a$, $\hat{U}$, $\hat{c}$)')
-        plt.plot(t, b_com, 'o', label=r'Computed $b = b_{0} + (b_{inf} - b_{0})\cdot(1 - \exp(-k\hat{U}))$''\n' r'$k = k_0/(1+\lambda \hat{c})$')
-        plt.title(fr"$\tilde{{\Theta}}$=0.0{j+2}, $\Omega$={Omega[i]}%")
-        plt.xlabel(r'$t$ [s]')
-        plt.ylabel(r'$b$ [-]')
-        plt.ylim(0, 1.5)
-        plt.xlim(0, 5)
-        plt.grid(True)
-        if j == 0:
-            plt.legend(fontsize=9, loc='upper right')
-    plt.tight_layout()
-    plt.show()
+# for i in range(5): #Omega
+#     plt.figure(figsize=(12, 8))
+#     for j in range(5): #Shields
+#         plt.subplot(3, 2, j+1)
+#         index_byS = i*5+j 
+#         b_com = Fitb([U_all_S[index_byS], C_all_S[index_byS]], b0, b_inf, k0, lamda)
+#         plt.plot(t, b_all_S[index_byS], 'o', label=r'DPM $\hat{b}$ = f($\hat{M}_{drag}$, $\hat{U}_a$, $\hat{U}$, $\hat{c}$)')
+#         plt.plot(t, b_com, 'o', label=r'Computed $b = b_{0} + (b_{inf} - b_{0})\cdot(1 - \exp(-k\hat{U}))$''\n' r'$k = k_0/(1+\lambda \hat{c})$')
+#         plt.title(fr"$\tilde{{\Theta}}$=0.0{j+2}, $\Omega$={Omega[i]}%")
+#         plt.xlabel(r'$t$ [s]')
+#         plt.ylabel(r'$b$ [-]')
+#         plt.ylim(0, 1.5)
+#         plt.xlim(0, 5)
+#         plt.grid(True)
+#         if j == 0:
+#             plt.legend(fontsize=9, loc='upper right')
+#     plt.tight_layout()
+#     plt.show()
     
-# plot to find out the dependence of c/U on b    
-for i in range(5): #Omega
-    plt.figure(figsize=(8, 8))
-    for j in range(5): #Shields
-        plt.subplot(3, 2, j+1)
-        index_byS = i*5+j 
-        Md_dpm = Md_all_S[index_byS]
-        b_dpm = compute_b(Md_dpm, C_all_S[index_byS], U_all_S[index_byS], Ua_all_S[index_byS])
-        plt.plot(C_all_S[index_byS], b_dpm, 'o', label='DPM')
-        plt.title(fr"$\tilde{{\Theta}}$=0.0{j+2}, $\Omega$={Omega[i]}%")
-        plt.xlabel(r'$\hat{c}$ [kg/m$^2$]')
-        plt.ylabel(r'$\hat{b}$ [-]')
-        plt.ylim(0, 1.1)
-        plt.xlim(0, 0.3)
-        plt.grid(True)
-        plt.legend()
-    plt.tight_layout()
-    plt.show()
+# # plot to find out the dependence of c/U on b    
+# for i in range(5): #Omega
+#     plt.figure(figsize=(8, 8))
+#     for j in range(5): #Shields
+#         plt.subplot(3, 2, j+1)
+#         index_byS = i*5+j 
+#         Md_dpm = Md_all_S[index_byS]
+#         b_dpm = compute_b(Md_dpm, C_all_S[index_byS], U_all_S[index_byS], Ua_all_S[index_byS])
+#         plt.plot(C_all_S[index_byS], b_dpm, 'o', label='DPM')
+#         plt.title(fr"$\tilde{{\Theta}}$=0.0{j+2}, $\Omega$={Omega[i]}%")
+#         plt.xlabel(r'$\hat{c}$ [kg/m$^2$]')
+#         plt.ylabel(r'$\hat{b}$ [-]')
+#         plt.ylim(0, 1.1)
+#         plt.xlim(0, 0.3)
+#         plt.grid(True)
+#         plt.legend()
+#     plt.tight_layout()
+#     plt.show()
     
-for i in range(5): #Omega
-    plt.figure(figsize=(8, 8))
-    for j in range(5): #Shields
-        plt.subplot(3, 2, j+1)
-        index_byS = i*5+j 
-        Md_dpm = Md_all_S[index_byS]
-        b_dpm = compute_b(Md_dpm, C_all_S[index_byS], U_all_S[index_byS], Ua_all_S[index_byS])
-        plt.plot(U_all_S[index_byS], b_dpm, 'o', label='DPM')
-        plt.title(fr"$\tilde{{\Theta}}$=0.0{j+2}, $\Omega$={Omega[i]}%")
-        plt.xlabel(r'$\hat{U}$ [m/s]')
-        plt.ylabel(r'$\hat{b}$ [-]')
-        plt.ylim(0, 1.1)
-        plt.xlim(0, 9)
-        plt.grid(True)
-        plt.legend()
-    plt.tight_layout()
-    plt.show()    
+# for i in range(5): #Omega
+#     plt.figure(figsize=(8, 8))
+#     for j in range(5): #Shields
+#         plt.subplot(3, 2, j+1)
+#         index_byS = i*5+j 
+#         Md_dpm = Md_all_S[index_byS]
+#         b_dpm = compute_b(Md_dpm, C_all_S[index_byS], U_all_S[index_byS], Ua_all_S[index_byS])
+#         plt.plot(U_all_S[index_byS], b_dpm, 'o', label='DPM')
+#         plt.title(fr"$\tilde{{\Theta}}$=0.0{j+2}, $\Omega$={Omega[i]}%")
+#         plt.xlabel(r'$\hat{U}$ [m/s]')
+#         plt.ylabel(r'$\hat{b}$ [-]')
+#         plt.ylim(0, 1.1)
+#         plt.xlim(0, 9)
+#         plt.grid(True)
+#         plt.legend()
+#     plt.tight_layout()
+#     plt.show()    
 
 # plot b,U,c - t
 # for i in range(5): #Omega
@@ -323,22 +323,22 @@ for i in range(5): #Omega
 #     plt.tight_layout()
 #     plt.show()    
 
-# for i in range(5): #Omega
-#     plt.figure(figsize=(10, 8))
-#     for j in range(5): #Shields
-#         plt.subplot(3, 2, j+1)
-#         index_byS = i*5+j 
-#         b_com = Fitb([U_all_S[index_byS], C_all_S[index_byS]], b0, b_inf, k0, lamda)
-#         Mdrag = CalMdrag([Ua_all_S[index_byS], U_all_S[index_byS], C_all_S[index_byS]], b_com)
-#         plt.plot(t, Md_all_S[index_byS], 'o', label=r'DPM $\hat{M}_{drag}$')
-#         plt.plot(t, Mdrag, 'o', label='Computed $M_{drag}=f(\hat{U_{a}}, \hat{U}, \hat{c}, $b$)$')
-#         plt.title(f"S00{j+2} {omega_labels[i]}")
-#         plt.xlabel(r'$t$ [s]')
-#         plt.ylabel(r'$M_{drag}$ [N/m$^2$]')
-#         plt.ylim(0, 2.2)
-#         plt.xlim(0, 5)
-#         plt.grid(True)
-#         plt.legend()
-#     plt.tight_layout()
-#     plt.show()
+for i in range(5): #Omega
+    plt.figure(figsize=(10, 8))
+    for j in range(5): #Shields
+        plt.subplot(3, 2, j+1)
+        index_byS = i*5+j 
+        b_com = Fitb([U_all_S[index_byS], C_all_S[index_byS]], b0, b_inf, k0, lamda)
+        Mdrag = CalMdrag([Ua_all_S[index_byS], U_all_S[index_byS], C_all_S[index_byS]], b_com)
+        plt.plot(t, Md_all_S[index_byS], '.', label=r'DPM $\hat{M}_{drag}$')
+        plt.plot(t, Mdrag, '.', label='Computed $M_{drag}=f(\hat{U_{a}}, \hat{U}, \hat{c}, $b$)$')
+        plt.title(f"S00{j+2} {omega_labels[i]}")
+        plt.xlabel(r'$t$ [s]')
+        plt.ylabel(r'$M_{drag}$ [N/m$^2$]')
+        plt.ylim(0, 2.2)
+        plt.xlim(0, 5)
+        plt.grid(True)
+        plt.legend()
+    plt.tight_layout()
+    plt.show()
     
