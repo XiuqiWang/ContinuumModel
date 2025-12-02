@@ -20,9 +20,11 @@ ustar_list = np.sqrt(Shields * (2650-1.225)*9.81*d/1.225)
 rho_a  = 1.225             # air density [kg/m^3] 
 nu_a   = 1.46e-5           # air kinematic viscosity [m^2/s]
 rho_p  = 2650.0            # particle density [kg/m^3]   
+Ruc    = 24
+Cd_inf = 0.5
 
 # Particle mass
-mp = rho_p * (np.pi/6.0) * d**3         
+mp = rho_p * np.pi/6.0 * d**3         
 thetaE = np.deg2rad(24)
 
 Omega_list = [0.0, 0.01, 0.05, 0.10, 0.20]
@@ -46,7 +48,7 @@ def calc_T_jump_ballistic_assumption(Uinc, theta_inc):
     return Tjump 
 
 def calc_Pr(Uinc):
-    Pr = 0.74*np.exp(-3.66*np.exp(-0.10*Uinc/const))
+    Pr = 0.74*np.exp(-4.46*np.exp(-0.10*Uinc/const))
     # if Pr <0 or Pr>1:
     #     print('Warning: Pr is not between 0 and 1')
     return Pr
@@ -154,27 +156,27 @@ def tau_top(u_star):
 #     fdrag = np.pi/8 * d**2 * rho_a * C_D * abs(dU) * dU                     
 #     return (c * fdrag) / mp
 
-def calc_Mdrag(c, Uair, U, Omega):
-    b = 0.6
-    burel = 0.6
-    Urel = burel*(b*Uair - U)
+def Fitb(U, c, b0=0.015, b_inf=0.79, k0=0.53, lamda=4.86):
+    k = k0/(1+lamda*c)
+    b = b0 + (b_inf - b0)*(1 - np.exp(-k*U))
+    return b
+
+def calc_Mdrag(Ua, U, c):
+    b = Fitb(U, c)
+    Urel = b * Ua - U
     Re = abs(Urel)*d/nu_a
-    Ruc = 24
-    Cd_inf = 0.5
-    Cd = (np.sqrt(Cd_inf)+np.sqrt(Ruc/Re))**2
-    Agrain = np.pi*(d/2)**2
-    Ngrains = c/mp
-    Mdrag = 0.5*rho_a*Urel*abs(Urel)*Cd*Agrain*Ngrains # drag term based on uniform velocity
+    Cd = (np.sqrt(Cd_inf)+np.sqrt(Ruc/Re))**2   
+    Mdrag = np.pi/8 * d**2 * rho_a * Urel * abs(Urel) * Cd * c/mp
     return Mdrag
 
-def MD_eff(Ua, U, c, Omega):
-    Mdrag = calc_Mdrag(c, Ua, U, Omega)
-    CD_bed = 0.0037
-    B, p = 3.5, 7.0
-    tau_basic = 0.5 * rho_a * CD_bed * Ua * abs(Ua)
-    M_bed = tau_basic * (1/(1+(B*Mdrag)**p)) # to guarantee that there is a balancing term with tau_top when c=0
-    M_final = Mdrag + M_bed
-    return M_final
+def calc_Mbed(Ua, U, c):
+    Mdrag = calc_Mdrag(Ua, U, c)
+    # CD_bed = 0.0037
+    # B, p = 3.5, 7.0
+    # tau_basic = 0.5 * rho_a * CD_bed * Ua * abs(Ua)
+    # M_bed = tau_basic * (1/(1+(B*Mdrag)**p)) # to guarantee that there is a balancing term with tau_top when c=0
+    M_bed = 1.38*Mdrag + 0.08 #temporarily...
+    return M_bed
 
 # --- Calculate rhs of the 3 equations ---
 E_all, D_all = [], []
@@ -183,7 +185,7 @@ def rhs_cmUa(t, y, u_star, Omega, eps=1e-16):
     c, m, Ua = y
     U = m/(c + eps)
 
-    Uinc = CalUincfromU(U, Omega)
+    Uinc = CalUincfromU(U, c)
     thetainc = theta_inc_from_Uinc(Uinc, Omega)
     Tim  = calc_T_jump_ballistic_assumption(Uinc, thetainc) + eps
     Pr = calc_Pr(Uinc) 
@@ -205,7 +207,7 @@ def rhs_cmUa(t, y, u_star, Omega, eps=1e-16):
             print('E = ',E)
 
     # momentum sources (streamwise)
-    M_drag = calc_Mdrag(c, Ua, U, Omega) 
+    M_drag = calc_Mdrag(Ua, U, c) 
     M_eje  = E * UE * np.cos(thetaE)
     M_re   = r_im * Pr * Ure*np.cos(th_re) 
     M_im   = r_im * Pr * Uinc*np.cos(thetainc) 
@@ -241,11 +243,7 @@ def rhs_cmUa(t, y, u_star, Omega, eps=1e-16):
 
     phi_term  = 1.0 - c/(rho_p*h)
     m_air_eff = rho_a*h*phi_term
-    dUa_dt    = (tau_top(u_star) - MD_eff(Ua, U, c, Omega)) / m_air_eff
-    
-    # E_all.append(E)
-    # D_all.append(D)
-    # Rim_all.append(r_im)
+    dUa_dt    = (tau_top(u_star) - calc_Mbed(Ua, U, c) - calc_Mdrag(Ua, U, c)) / m_air_eff # 
 
     return [dc_dt, dm_dt, dUa_dt]
 # ---------- simple Euler–forward integrator ----------
@@ -350,11 +348,11 @@ for ui, ustar in enumerate(ustar_list):
         U_mod   = model_run[Omega][ustar]['U']
         Ua_mod  = model_run[Omega][ustar]['Ua']
 
-        label = f'Ω={Omega}'
+        label = fr'Ω={Omega*100} $\%$'
 
         # --- Plot C ---
-        axC.plot(t_mod, C_mod, color=colors[oi], label=f'{label} – model')
-        axC.plot(t_meas, C_meas, '--', color=colors[oi], label=f'{label} – data')
+        axC.plot(t_mod, C_mod, color=colors[oi], label=f'{label} – continuum')
+        axC.plot(t_meas, C_meas, '--', color=colors[oi], label=f'{label} – DPM')
 
         # --- Plot U ---
         axU.plot(t_mod, U_mod, color=colors[oi])
@@ -367,7 +365,7 @@ for ui, ustar in enumerate(ustar_list):
     axC.set_ylabel('C [kg/m²]')
     axC.set_title(fr'$\Theta$ = {Shields[ui]:.2f}')
     axC.grid(True)
-    axC.set_ylim(0, 1.0)
+    axC.set_ylim(0, 0.4)
     axC.legend(fontsize=8)
 
     axU.set_ylabel('U [m/s]')
