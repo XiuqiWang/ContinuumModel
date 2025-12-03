@@ -37,8 +37,7 @@ def CalUincfromU(U, c):
     # else:
     #     # Uinc = 0.85*U
     #     Uinc = 0.44*U**1.36
-    Cref_Uinc = 0.079
-    A = 1/np.sqrt(1 + c/Cref_Uinc)
+    A = 1/(1 + c*5.26)
     Uinc = A*U
     return Uinc
 
@@ -243,7 +242,8 @@ def rhs_cmUa(t, y, u_star, Omega, eps=1e-16):
 
     phi_term  = 1.0 - c/(rho_p*h)
     m_air_eff = rho_a*h*phi_term
-    dUa_dt    = (tau_top(u_star) - calc_Mbed(Ua, U, c) - calc_Mdrag(Ua, U, c)) / m_air_eff # 
+    M_bed = calc_Mbed(Ua, U, c)
+    dUa_dt    = (tau_top(u_star) - M_bed - M_drag) / m_air_eff
 
     return [dc_dt, dm_dt, dUa_dt]
 # ---------- simple Euler–forward integrator ----------
@@ -351,8 +351,8 @@ for ui, ustar in enumerate(ustar_list):
         label = fr'Ω={Omega*100} $\%$'
 
         # --- Plot C ---
-        axC.plot(t_mod, C_mod, color=colors[oi], label=f'{label} – continuum')
-        axC.plot(t_meas, C_meas, '--', color=colors[oi], label=f'{label} – DPM')
+        axC.plot(t_mod, C_mod, color=colors[oi], label=f'{label}')
+        axC.plot(t_meas, C_meas, '--', color=colors[oi])
 
         # --- Plot U ---
         axU.plot(t_mod, U_mod, color=colors[oi])
@@ -361,7 +361,9 @@ for ui, ustar in enumerate(ustar_list):
         # --- Plot Ua ---
         axUa.plot(t_mod, Ua_mod, color=colors[oi])
         axUa.plot(t_meas, Ua_meas, '--', color=colors[oi])
-
+        
+    axC.plot([], [], color='black', label=r"Continuum")
+    axC.plot([], [], '--', color='black', label=r"DPM")
     axC.set_ylabel('C [kg/m²]')
     axC.set_title(fr'$\Theta$ = {Shields[ui]:.2f}')
     axC.grid(True)
