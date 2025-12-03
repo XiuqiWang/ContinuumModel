@@ -106,6 +106,16 @@ def Fitb(x, b0, b_inf, k0, lamda):
     b = b0 + (b_inf - b0)*(1 - np.exp(-k*U))
     return b
 
+def b_of_Uc(x, b0, b_inf0, k0, lam):
+    U,c = x
+    # b0      : base value at U=0
+    # b_inf0  : asymptotic level at very low concentration
+    # alpha   : strength of b_inf reduction with c
+    # lam     : strength of k reduction with c
+    # b_inf_c = b_inf0 / (1.0 + alpha * c)
+    k_c     = k0    / (1.0 + lam   * c)
+    return b0 + (b_inf0 - b0) * (1.0 - np.exp(-k_c * U))
+
 def weighted_r2(y_true, y_pred, weights):
     y_avg = np.average(y_true, weights=weights)
     ss_res = np.sum(weights * (y_true - y_pred)**2)
@@ -216,29 +226,26 @@ b_all = np.concatenate(b_all_S)
 mask = np.isfinite(U_all) & np.isfinite(b_all) & np.isfinite(C_all)
 U_all, b_all, C_all = U_all[mask], b_all[mask], C_all[mask]
 
-popt, _ = curve_fit(Fitb, [U_all, C_all], b_all, absolute_sigma=True, maxfev=20000)
-b0, b_inf, k0, lamda = popt
-print(f'b0={b0:.4f}, b_inf={b_inf:.4f}, k0 = {k0:.4f}, lamda = {lamda:.4f}')
-
-# Cref, Cref_urel = 1.0, 0.024#1.0, 0.0088
-b_pred = Fitb([U_all, C_all], b0, b_inf, k0, lamda)
+popt, _ = curve_fit(b_of_Uc, [U_all, C_all], b_all, absolute_sigma=True, maxfev=20000)
+b0, b_inf0, k0, lam = popt
+print(f'b0={b0:.4f}, b_inf0={b_inf0:.4f}, k0 = {k0:.4f}, lam={lam:.2f}')
+b_pred = b_of_Uc([U_all, C_all], b0, b_inf0, k0, lam)
 r2 = r2_score(b_all, b_pred)
 print('r2', r2)
 
 plt.close('all')
-# Cref, Cref_urel = 1.0, 0.024#1.0, 0.0088
 for i in range(5): #Omega
     plt.figure(figsize=(12, 8))
     for j in range(5): #Shields
         plt.subplot(3, 2, j+1)
         index_byS = i*5+j 
-        b_com = Fitb([U_all_S[index_byS], C_all_S[index_byS]], b0, b_inf, k0, lamda)
+        b_com = b_of_Uc([U_all_S[index_byS], C_all_S[index_byS]], b0, b_inf0, k0, lam)
         plt.plot(U_all_S[index_byS], b_all_S[index_byS], 'o', label=r'DPM $\hat{b}$ = f($\hat{M}_{drag}$, $\hat{U}_a$, $\hat{U}$, $\hat{c}$)')
-        plt.plot(U_all_S[index_byS], b_com, 'o', label=r'Computed $b = b_{0} + (b_{inf} - b_{0})\cdot(1 - \exp(-k\hat{U}))$''\n' r'$k = k_0/(1+\lambda \hat{c})$')
+        plt.plot(U_all_S[index_byS], b_com, 'o', label=r'Computed $b = b(\hat{U},\hat{c})$')
         plt.title(fr"$\tilde{{\Theta}}$=0.0{j+2}, $\Omega$={Omega[i]}%")
         plt.xlabel(r'$\hat{U}$ [m/s]')
         plt.ylabel(r'$b$ [-]')
-        plt.ylim(0, 1.3)
+        plt.ylim(0, 1.2)
         plt.xlim(0, 10)
         plt.grid(True)
         if j == 0:
@@ -246,24 +253,49 @@ for i in range(5): #Omega
     plt.tight_layout()
     plt.show()
     
-# for i in range(5): #Omega
-#     plt.figure(figsize=(12, 8))
-#     for j in range(5): #Shields
-#         plt.subplot(3, 2, j+1)
-#         index_byS = i*5+j 
-#         b_com = Fitb([U_all_S[index_byS], C_all_S[index_byS]], b0, b_inf, k0, lamda)
-#         plt.plot(t, b_all_S[index_byS], 'o', label=r'DPM $\hat{b}$ = f($\hat{M}_{drag}$, $\hat{U}_a$, $\hat{U}$, $\hat{c}$)')
-#         plt.plot(t, b_com, 'o', label=r'Computed $b = b_{0} + (b_{inf} - b_{0})\cdot(1 - \exp(-k\hat{U}))$''\n' r'$k = k_0/(1+\lambda \hat{c})$')
-#         plt.title(fr"$\tilde{{\Theta}}$=0.0{j+2}, $\Omega$={Omega[i]}%")
-#         plt.xlabel(r'$t$ [s]')
-#         plt.ylabel(r'$b$ [-]')
-#         plt.ylim(0, 1.5)
-#         plt.xlim(0, 5)
-#         plt.grid(True)
-#         if j == 0:
-#             plt.legend(fontsize=9, loc='upper right')
-#     plt.tight_layout()
-#     plt.show()
+# plt.figure(figsize=(6,6))
+# plt.subplot(2,1,1)
+# plt.plot(t, b_all_S[4], '.', label='DPM $\hat{b}$')
+# # plt.plot(t, U_all_S[24], '.', label='DPM $\hat{U}$')
+# plt.plot(t, C_all_S[4], '.', label='DPM $\hat{c}$')
+# plt.xlabel('t [s]')
+# plt.legend()
+# plt.subplot(2,1,2)
+# sc = plt.scatter(
+#             U_all_S[4], 
+#             b_all_S[4], 
+#             c=t, 
+#             cmap='viridis', 
+#             s=10
+#         )
+# cbar = plt.colorbar(sc)
+# cbar.set_label("time [s]")
+# plt.xlabel(r"$\hat{U}$ [m/s]")
+# plt.ylabel(r"$\hat{b}$")
+# plt.grid(True)
+# plt.suptitle('Shields=0.06, Omega=0%')
+# plt.tight_layout()    
+    
+for i in range(5): #Omega
+    plt.figure(figsize=(10, 8))
+    for j in range(5): #Shields
+        plt.subplot(3, 2, j+1)
+        index_byS = i*5+j 
+        b_com = b_of_Uc([U_all_S[index_byS], C_all_S[index_byS]], b0, b_inf0, k0, lam)
+        Mdrag = CalMdrag([Ua_all_S[index_byS], U_all_S[index_byS], C_all_S[index_byS]], b_com)
+        plt.plot(t, Md_all_S[index_byS], '.', label=r'DPM $\hat{M}_{drag}$')
+        plt.plot(t, Mdrag, '.', label='Predicted $M_{drag}=f(\hat{U_{a}}, \hat{U}, \hat{c}, $b$)$')
+        plt.title(f"S00{j+2} {omega_labels[i]}")
+        plt.xlabel(r'$t$ [s]')
+        plt.ylabel(r'$M_{drag}$ [N/m$^2$]')
+        plt.ylim(0, 2.5)
+        plt.xlim(0, 5)
+        plt.grid(True)
+        plt.legend()
+    plt.tight_layout()
+    plt.show()
+    
+# plot original b - c and b - U
     
 # # plot to find out the dependence of c/U on b    
 # for i in range(5): #Omega
@@ -283,7 +315,7 @@ for i in range(5): #Omega
 #         plt.legend()
 #     plt.tight_layout()
 #     plt.show()
-    
+
 # for i in range(5): #Omega
 #     plt.figure(figsize=(8, 8))
 #     for j in range(5): #Shields
@@ -301,44 +333,3 @@ for i in range(5): #Omega
 #         plt.legend()
 #     plt.tight_layout()
 #     plt.show()    
-
-# plot b,U,c - t
-# for i in range(5): #Omega
-#     plt.figure(figsize=(8, 8))
-#     for j in range(5): #Shields
-#         plt.subplot(3, 2, j+1)
-#         index_byS = i*5+j 
-#         Md_dpm = Md_all_S[index_byS]
-#         b_dpm = compute_b(Md_dpm, C_all_S[index_byS], U_all_S[index_byS], Ua_all_S[index_byS])
-#         plt.plot(t, b_dpm, 'o', label=r'$\hat{b}$')
-#         plt.plot(t, U_all_S[index_byS], 'o', label=r'$\hat{U}$')
-#         plt.plot(t, C_all_S[index_byS], 'o', label=r'$\hat{c}$')
-#         plt.title(f"S00{j+2} {omega_labels[i]}")
-#         plt.xlabel(r'$t$ [s]')
-#         plt.ylabel(r'$\hat{b}$, $\hat{U}$, $\hat{c}$')
-#         plt.ylim(0, 10.0)
-#         plt.xlim(0, 5)
-#         plt.grid(True)
-#         plt.legend()
-#     plt.tight_layout()
-#     plt.show()    
-
-for i in range(5): #Omega
-    plt.figure(figsize=(10, 8))
-    for j in range(5): #Shields
-        plt.subplot(3, 2, j+1)
-        index_byS = i*5+j 
-        b_com = Fitb([U_all_S[index_byS], C_all_S[index_byS]], b0, b_inf, k0, lamda)
-        Mdrag = CalMdrag([Ua_all_S[index_byS], U_all_S[index_byS], C_all_S[index_byS]], b_com)
-        plt.plot(t, Md_all_S[index_byS], '.', label=r'DPM $\hat{M}_{drag}$')
-        plt.plot(t, Mdrag, '.', label='Computed $M_{drag}=f(\hat{U_{a}}, \hat{U}, \hat{c}, $b$)$')
-        plt.title(f"S00{j+2} {omega_labels[i]}")
-        plt.xlabel(r'$t$ [s]')
-        plt.ylabel(r'$M_{drag}$ [N/m$^2$]')
-        plt.ylim(0, 2.2)
-        plt.xlim(0, 5)
-        plt.grid(True)
-        plt.legend()
-    plt.tight_layout()
-    plt.show()
-    
