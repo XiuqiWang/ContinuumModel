@@ -79,10 +79,10 @@ U_all, Ua_all, C_all, Md_all = U_all[mask], Ua_all[mask], C_all[mask], Md_all[ma
 
 popt, _ = curve_fit(CalMdrag, [Ua_all, U_all, C_all], Md_all, absolute_sigma=True, maxfev=100000)
 b_inf, k, cref = popt
-# print(f'b_inf={b_inf:.4f}, k = {k:.4f}, cref={cref:.2f}, n={n:.2f}')
-# Md_pred = CalMdrag([Ua_all, U_all, C_all], b_inf, k, cref, n)
-# r2 = r2_score(Md_all, Md_pred)
-# print('r2', r2)
+print(f'b_inf={b_inf:.4f}, k = {k:.4f}, cref={cref:.2f}')
+Md_pred = CalMdrag([Ua_all, U_all, C_all], b_inf, k, cref)
+r2 = r2_score(Md_all, Md_pred)
+print('r2', r2)
 
 plt.close('all')
     
@@ -93,12 +93,12 @@ for i in range(5): #Omega
         index_byS = i*5+j 
         Mdrag = CalMdrag([Ua_all_S[index_byS], U_all_S[index_byS], C_all_S[index_byS]], b_inf, k, cref)
         plt.plot(t, Md_all_S[index_byS], '.', label=r'DPM $\hat{M}_{drag}$')
-        plt.plot(t, Mdrag, '.', label='Predicted $M_{drag}=f(\hat{U_{a}}, \hat{U}, \hat{c}, $b$)$')
-        plt.title(f"S00{j+2} {omega_labels[i]}")
+        plt.plot(t, Mdrag, '.', label=r'Computed $M_{\mathrm{drag}}=f(\hat{U_\mathrm{air}}, \hat{U}, \hat{c}, b_\mathrm{urel}, b)$')
+        plt.title(fr"$\tilde{{\Theta}}$=0.0{j+2}, $\Omega$={Omega[i]}%")
         plt.xlabel(r'$t$ [s]')
         plt.ylabel(r'$M_{drag}$ [N/m$^2$]')
-        # plt.ylim(0, 2.5)
-        # plt.xlim(0, 5)
+        plt.ylim(0, 2.5)
+        plt.xlim(0, 5)
         plt.grid(True)
         plt.legend()
     plt.tight_layout()
