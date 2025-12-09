@@ -100,21 +100,21 @@ def UE_from_Uinc(Uinc, Omega):
     return U_E * np.sign(Uinc)  
 
 # def calc_N_E_test(Uinc, Omega):
-#        sqrtgd = np.sqrt(g*d)
-#        # N_E = np.sqrt(Uinc/sqrtgd)*(0.04-0.04*Omega**0.23)*5
-#        # N_E = (1-(10*Omega+0.2)/(Uinc**2+(10*Omega+0.2)))*np.sqrt(Uinc/sqrtgd)*(0.04-0.04*Omega**0.23)*7
-#        p = 8
-#        ##
-#        p2 = 2
-#        A = 100
-#        Uinc_half_min = 1.0
-#        Uinc_half_max = 6
-#        Uinc_half = Uinc_half_min + (Uinc_half_max - Uinc_half_min)*(A*Omega)**p2/((A*Omega)**p2+1)
-#        ##
-#        #Uinc_half = 0.5+40*Omega**0.5
-#        B = 1/Uinc_half**p
-#        N_E = (1-1./(1.+B*Uinc**p))*2.5 * Uinc**(1/10)
-#        return N_E 
+#         sqrtgd = np.sqrt(g*d)
+#         # N_E = np.sqrt(Uinc/sqrtgd)*(0.04-0.04*Omega**0.23)*5
+#         # N_E = (1-(10*Omega+0.2)/(Uinc**2+(10*Omega+0.2)))*np.sqrt(Uinc/sqrtgd)*(0.04-0.04*Omega**0.23)*7
+#         p = 8
+#         ##
+#         p2 = 2
+#         A = 100
+#         Uinc_half_min = 1.0
+#         Uinc_half_max = 6
+#         Uinc_half = Uinc_half_min + (Uinc_half_max - Uinc_half_min)*(A*Omega)**p2/((A*Omega)**p2+1)
+#         ##
+#         #Uinc_half = 0.5+40*Omega**0.5
+#         B = 1/Uinc_half**p
+#         N_E = (1-1./(1.+B*Uinc**p))*2.5 * Uinc**(1/10)
+#         return N_E 
 
 # def calc_N_E_test3(Uinc, Omega):
 #         N_E_Xiuqi = NE_from_Uinc(Uinc, Omega)
