@@ -52,8 +52,9 @@ def calc_Pr(Uinc, params):
     # A = min(A, 0.999)
     # Pr = A*np.exp(-B*np.exp(-0.10*Uinc/const))
     # Pr = 0.74*np.exp(-4.46*np.exp(-0.1*abs(Uinc)/const))
-    ap, bp, cp = params #0.74, 4.46, 0.10
-    Pr = ap*np.exp(-bp*np.exp(-cp*abs(Uinc)/const))
+    ap, bp, _, _, _ = params #0.74, 4.46, 0.10
+    # Pr = ap*np.exp(-bp*np.exp(-cp*abs(Uinc)/const))
+    Pr = ap * (1-np.exp(-bp*Uinc))
     return Pr
 
 def e_COR_from_Uim(Uim, Omega):
@@ -79,9 +80,9 @@ def theta_reb_from_Uim(Uim, Omega):
         print('The value of theta_re is not logical')                              
     return theta_re
 
-def NE_from_Uinc(Uinc, Omega): 
+def NE_from_Uinc(Uinc, Omega, params): 
     # NE = (0.03 - 0.025*Omega**0.21) * (abs(Uinc)/const) 
-    ane, bne, cne = 0.03, 0.025, 0.21
+    _,_, ane, bne, cne = params#0.03, 0.025, 0.21
     NE = (ane - bne*Omega**cne) * (abs(Uinc)/const) 
     return NE
 
@@ -153,7 +154,7 @@ def rhs_cmUa(t, y, u_star, Omega, params):
     r_im = c/Tim 
 
     # ejection numbers and rebound kinematics
-    NEim = NE_from_Uinc(Uinc, Omega) 
+    NEim = NE_from_Uinc(Uinc, Omega, params) 
     # NEim = max(1e-6, NEim)
     eCOR = e_COR_from_Uim(Uinc, Omega); Ure = Uinc*eCOR
     th_re = theta_reb_from_Uim(Uinc, Omega)
@@ -343,17 +344,17 @@ def cost_function(params):
     return cost
 
 # initial guess
-x0 = [0.99, 1.00, 0.13]#, 0.02, 0.02, 0.1]#[0.75, 8.0, 0.1#[0.05, 0.05, 3.5, 7.0]#, 0.50, 1.0]
-bounds = [(0.2, 0.99), (1.0, 10.0), (0.05, 0.20)]#, (0.02, 0.035), (0.02, 0.03), (0.1, 0.25)]#[(0.10, 0.99),(1e-6, 15.0), (0.001, 0.5),#(1e-6, 1.0), (1e-6, 1.0), (1e-6, None), (1e-6, None)]#, (0.01, 1.0), (0.01, 2.0)]
+# x0 = [0.99, 1.00, 0.13]#, 0.02, 0.02, 0.1]#[0.75, 8.0, 0.1#[0.05, 0.05, 3.5, 7.0]#, 0.50, 1.0]
+# bounds = [(0.2, 0.99), (1.0, 10.0), (0.05, 0.20)]#, (0.02, 0.035), (0.02, 0.03), (0.1, 0.25)]#[(0.10, 0.99),(1e-6, 15.0), (0.001, 0.5),#(1e-6, 1.0), (1e-6, 1.0), (1e-6, None), (1e-6, None)]#, (0.01, 1.0), (0.01, 2.0)]
 
-res = minimize(cost_function, x0, bounds=bounds, method='L-BFGS-B')
+# res = minimize(cost_function, x0, bounds=bounds, method='L-BFGS-B')
 
-param_names = ['a_Pr', 'b_Pr', 'c_Pr']#,'a_NE', 'b_NE', 'c_NE']
+# param_names = ['a_Pr', 'b_Pr', 'c_Pr']#,'a_NE', 'b_NE', 'c_NE']
 
-for name, value in zip(param_names, res.x):
-    print(f"{name:>6} = {value:.6f}")
+# for name, value in zip(param_names, res.x):
+#     print(f"{name:>6} = {value:.6f}")
 
-model_run = simulate_model(res.x) #([0.95, 1.2, 0.2, 0.02, 0.02, 0.1]) #
+model_run = simulate_model([0.99, 3.75, 0.02, 0.02, 0.08]) #[0.95, 1.2, 0.2, 0.02, 0.02, 0.1]) #
 t_mod = np.linspace(0, 5, 501)
 dt = 0.01
 

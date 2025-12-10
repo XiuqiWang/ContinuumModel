@@ -348,7 +348,7 @@ def cost_function(params):
     return cost
 
 # initial guess
-# x0 = [0.90, 1.00, 0.03, 0.025, 0.21]#[0.99, 1.00, 0.13, 0.02, 0.02, 0.1]
+# x0 = [0.99, 3.5, 0.02, 0.02, 0.1]#[0.99, 1.00, 0.13, 0.02, 0.02, 0.1]
 # bounds = [(0.2, 0.99), (1.0, 10.0), (0.02, 0.035), (0.02, 0.03), (0.1, 0.25)]#[(0.10, 0.99),(1e-6, 15.0), (0.001, 0.5),#(1e-6, 1.0), (1e-6, 1.0), (1e-6, None), (1e-6, None)]#, (0.01, 1.0), (0.01, 2.0)]
 
 # res = minimize(cost_function, x0, bounds=bounds, method='L-BFGS-B')
@@ -358,7 +358,7 @@ def cost_function(params):
 # for name, value in zip(param_names, res.x):
 #     print(f"{name:>6} = {value:.6f}")
 
-model_run = simulate_model([0.99, 3.5, 0.02, 0.02, 0.1]) #
+model_run = simulate_model([0.99, 3.75, 0.02, 0.02, 0.08]) #
 t_mod = np.linspace(0, 5, 501)
 dt = 0.01
 
