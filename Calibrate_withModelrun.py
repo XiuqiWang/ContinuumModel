@@ -15,7 +15,7 @@ g = 9.81
 d = 0.00025                # grain diameter [m]  
 const = np.sqrt(g*d)       # √(g d)
 h = 0.2 - 13.5*d           # domain height [m] 
-Shields = np.linspace(0.05, 0.06, 2)
+Shields = np.linspace(0.03, 0.06, 4)
 ustar_list = np.sqrt(Shields * (2650-1.225)*9.81*d/1.225)
 Omega_list = [0.0, 0.01, 0.05, 0.10, 0.20]
 
@@ -33,7 +33,7 @@ colors = plt.cm.viridis(np.linspace(1, 0, 5))  # 5 colors
 
 # -------------------- closures from the PDF --------------------
 def CalUincfromU(U, c):
-    A = 1/(1 + c*5.26)
+    A = 1/(1 + c/0.19)
     Uinc = A*U
     return Uinc
 
@@ -42,7 +42,7 @@ def calc_T_jump_ballistic_assumption(Uinc, theta_inc):
     Tjump = 2*Uy0/g
     return Tjump 
 
-def calc_Pr(Uinc, params):
+def calc_Pr(Uinc, params, Omega):
     # kA, kB = 0, 0 #params
     # # A0 = 0.74
     # # B0 = 3.66
@@ -53,10 +53,12 @@ def calc_Pr(Uinc, params):
     # A = min(A, 0.999)
     # Pr = A*np.exp(-B*np.exp(-0.10*Uinc/const))
     # Pr = 0.74*np.exp(-4.46*np.exp(-0.1*abs(Uinc)/const))
-    ap, bp, cp, _, _ = params#0.74, 4.46, 0.10
-    # cp = 0.10
-    # ap = ap0 + ap1*Omega
-    Pr = ap*np.exp(-bp*np.exp(-cp*abs(Uinc)/const))
+    # ap, bp, cp = params#0.74, 4.46, 0.10
+    # Pr = ap*np.exp(-bp*np.exp(-cp*abs(Uinc)/const))
+    ap, bp, _,_,_ = params
+    Pr = ap * (1-np.exp(-bp*Uinc))
+    # Pr = 0.95*(1-np.exp(-2*Uinc))
+    # Pr = 0.97*(1-np.exp(-3.5*Uinc))
     return Pr
 
 def e_COR_from_Uim(Uim, Omega):
@@ -84,8 +86,8 @@ def theta_reb_from_Uim(Uim, Omega):
 
 def NE_from_Uinc(Uinc, Omega, params): 
     # NE = (0.03 - 0.025*Omega**0.21) * (abs(Uinc)/const) 
-    _, _, _, ane, bne = params # 0.03, 0.025
-    NE = (ane - bne*Omega**0.21) * (abs(Uinc)/const) 
+    _,_,ane, bne, cne = params #0.03, 0.025, 0.21
+    NE = (ane - bne*Omega**cne) * (abs(Uinc)/const) 
     return NE
 
 def UE_from_Uinc(Uinc, Omega):
@@ -97,28 +99,37 @@ def UE_from_Uinc(Uinc, Omega):
 def tau_top(u_star):                                                 
     return rho_a * u_star**2     
 
-def Fitb(U, c, b0=0.015, b_inf=0.79, k0=0.53, lamda=4.86):
-    k = k0/(1+lamda*c)
-    b = b0 + (b_inf - b0)*(1 - np.exp(-k*U))
-    return b
+# def Fitb(U, c, b0=0.015, b_inf=0.79, k0=0.53, lamda=4.86):
+#     k = k0/(1+lamda*c)
+#     b = b0 + (b_inf - b0)*(1 - np.exp(-k*U))
+#     return b
+
+# def calc_Mdrag(Ua, U, c):
+#     b = Fitb(U, c)
+#     Urel = b * Ua - U
+#     Re = abs(Urel)*d/nu_a
+#     Cd = (np.sqrt(Cd_inf)+np.sqrt(Ruc/Re))**2   
+#     Mdrag = np.pi/8 * d**2 * rho_a * Urel * abs(Urel) * Cd * c/mp
+#     return Mdrag
 
 def calc_Mdrag(Ua, U, c):
-    b = Fitb(U, c)
-    Urel = b * Ua - U
+    b = 0.84*(1-np.exp(-0.49*U))
+    burel = 1/(1+c/0.09)
+    Urel = burel*(b * Ua - U)
     Re = abs(Urel)*d/nu_a
+    # Re = np.maximum(Re, 1e-6)
     Cd = (np.sqrt(Cd_inf)+np.sqrt(Ruc/Re))**2   
-    Mdrag = np.pi/8 * d**2 * rho_a * Urel * abs(Urel) * Cd * c/mp
+    Mdrag = np.pi/8 * d**2 * rho_a * Cd * Urel * abs(Urel) * c/mp
     return Mdrag
 
-def calc_Mbed(Ua, U, c):
+def calc_Mcreep(Ua, U, c):
     Mdrag = calc_Mdrag(Ua, U, c)
-    # CD_bed = 0.0037
-    # B, p = 3.5, 7.0
-    # tau_basic = 0.5 * rho_a * CD_bed * Ua * abs(Ua)
-    # M_bed = tau_basic * (1/(1+(B*Mdrag)**p)) # to guarantee that there is a balancing term with tau_top when c=0
-    a_mbed, b_mbed = 1.35, 0.08
-    M_bed = a_mbed*Mdrag + b_mbed #temporarily...
+    M_bed = 1.21*Mdrag 
     return M_bed
+
+def calc_Maero(Ua):
+    Maero = 0.5*0.0037*rho_a*abs(Ua)*Ua
+    return Maero
 
 # MEASUREMENT–DRIVEN START TIME DETECTION
 # ============================================================
@@ -141,7 +152,7 @@ def rhs_cmUa(t, y, u_star, Omega, params):
     Uinc = CalUincfromU(U, c)
     thetainc = theta_inc_from_Uinc(Uinc, Omega)
     Tim  = calc_T_jump_ballistic_assumption(Uinc, thetainc) + eps
-    Pr = calc_Pr(Uinc, params)
+    Pr = calc_Pr(Uinc, params, Omega)
 
     # mixing fractions and rates
     r_im = c/Tim 
@@ -197,8 +208,9 @@ def rhs_cmUa(t, y, u_star, Omega, params):
 
     phi_term  = 1.0 - c/(rho_p*h)
     m_air_eff = rho_a*h*phi_term
-    M_bed = calc_Mbed(Ua, U, c)
-    dUa_dt    = (tau_top(u_star) - M_bed - M_drag) / m_air_eff
+    M_creep = calc_Mcreep(Ua, U, c)
+    M_aero = calc_Maero(Ua)
+    dUa_dt    = (tau_top(u_star) - M_aero - M_creep - M_drag) / m_air_eff
 
     return [dc_dt, dm_dt, dUa_dt]
 
@@ -238,7 +250,7 @@ Ua_dpm = []
 
 # Loop over all moisture levels
 for label in omega_labels:
-    for i in range(5, 7):
+    for i in range(3, 7):
         # --- Load sediment transport data ---
         file_path = f'CGdata/hb=13.5d/Shields00{i}{label}-135d.txt'
         data = np.loadtxt(file_path)
@@ -262,13 +274,13 @@ def simulate_model(params):
     for i, Omega in enumerate(Omega_list):
         for j, ustar in enumerate(ustar_list):
         # j, ustar = 3, ustar_list[-1]
-            index = i*2+j
+            index = i*len(ustar_list)+j
     
             C_meas = C_dpm[index]
             U_meas = U_dpm[index]
             Ua_meas = Ua_dpm[index]
     
-            start_idx = detect_start_idx(C_meas, 0.05)
+            start_idx = detect_start_idx(C_meas, 0.075)
             if start_idx is None:
                 # no saltation → ignore
                 continue
@@ -305,13 +317,13 @@ def cost_function(params):
 
     for i, Omega in enumerate(Omega_list):
         for j, ustar in enumerate(ustar_list):
-            index = i*2+j
+            index = i*len(ustar_list)+j
 
             C_meas = C_dpm[index]
             U_meas = U_dpm[index]
             Ua_meas = Ua_dpm[index]
 
-            start_idx = detect_start_idx(C_meas, 0.05)
+            start_idx = detect_start_idx(C_meas, 0.075)
             if start_idx is None:
                 continue
 
@@ -329,24 +341,24 @@ def cost_function(params):
             n = len(C_meas_seg)
             t_weights = np.linspace(0.3, 1.0, n)
 
-            cost += np.sum(t_weights * (c_mod - C_meas_seg)**2) / (np.sum(C_meas_seg**2) + eps)
-            cost += np.sum(t_weights * (U_mod - U_meas_seg)**2)  / (np.sum(U_meas_seg**2) + eps)
-            cost += np.sum(t_weights * (Ua_mod - Ua_meas_seg)**2) / (np.sum(Ua_meas_seg**2) + eps) 
+            cost += np.sum(t_weights * (c_mod - C_meas_seg)**2) / (np.sum(t_weights * C_meas_seg**2) + eps)
+            cost += np.sum(t_weights * (U_mod - U_meas_seg)**2) / (np.sum(t_weights * U_meas_seg**2) + eps)
+            cost += np.sum(t_weights * (Ua_mod - Ua_meas_seg)**2) / (np.sum(t_weights * Ua_meas_seg**2) + eps) 
 
     return cost
 
 # initial guess
-x0 = [0.5, 4.5, 0.10, 0.03, 0.03]#[0.75, 8.0, 0.1#[0.05, 0.05, 3.5, 7.0]#, 0.50, 1.0]
-bounds = [(0.2, 0.99), (1.0, 10.0), (0.05, 0.20), (0.01, 0.1), (0.01, 0.1)]#[(0.10, 0.99),(1e-6, 15.0), (0.001, 0.5),#(1e-6, 1.0), (1e-6, 1.0), (1e-6, None), (1e-6, None)]#, (0.01, 1.0), (0.01, 2.0)]
+# x0 = [0.90, 1.00, 0.03, 0.025, 0.21]#[0.99, 1.00, 0.13, 0.02, 0.02, 0.1]
+# bounds = [(0.2, 0.99), (1.0, 10.0), (0.02, 0.035), (0.02, 0.03), (0.1, 0.25)]#[(0.10, 0.99),(1e-6, 15.0), (0.001, 0.5),#(1e-6, 1.0), (1e-6, 1.0), (1e-6, None), (1e-6, None)]#, (0.01, 1.0), (0.01, 2.0)]
 
-res = minimize(cost_function, x0, bounds=bounds, method='L-BFGS-B')
+# res = minimize(cost_function, x0, bounds=bounds, method='L-BFGS-B')
 
-param_names = ['a_Pr', 'b_Pr', 'c_Pr','a_NE', 'b_NE']
+# param_names = ['a_Pr', 'b_Pr', 'c_Pr','a_NE', 'b_NE', 'c_NE']
 
-for name, value in zip(param_names, res.x):
-    print(f"{name:>6} = {value:.6f}")
+# for name, value in zip(param_names, res.x):
+#     print(f"{name:>6} = {value:.6f}")
 
-model_run = simulate_model(res.x) 
+model_run = simulate_model([0.99, 3.5, 0.02, 0.02, 0.1]) #
 t_mod = np.linspace(0, 5, 501)
 dt = 0.01
 
@@ -367,7 +379,7 @@ for ui, ustar in enumerate(ustar_list):
         t_meas  = np.linspace(0, 5, len(C_meas))
     
         # detect start idx
-        start_idx = detect_start_idx(C_meas, 0.05)
+        start_idx = detect_start_idx(C_meas, 0.075)
         if start_idx is None:
             continue
     
