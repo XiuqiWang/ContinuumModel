@@ -86,58 +86,86 @@ def CalUincfromU(U, Omega):
     Uinc = A*U**n
     return Uinc
 
-def NE_linear_from_Uinc(Uinc, Omega):
-    NE_linear = (0.03-0.028*Omega**0.19) * (abs(Uinc)/const) 
+def NE_linear_from_Uinc(Uinc, Omega, params):
+    a, b, c = params
+    NE_linear = (a-b*Omega**c) * (abs(Uinc)/const) 
     return NE_linear
 
 def NE_from_Uinc(Uinc, Omega, Uc, dU): 
-    NE_lin = (0.03-0.028*Omega**0.19) * (abs(Uinc)/const) 
+    NE_lin = (0.03-0.025*Omega**0.19) * (abs(Uinc)/const) 
     switch = 1.0 / (1.0 + np.exp(-(U - Uc)/dU))
     NE = NE_lin * switch
     return NE
 
+Omega_list = [0, 0.01, 0.05, 0.1, 0.2]
 U = np.linspace(0, 5, 100)
 Uinc = CalUincfromU(U, 0)
-NE_linear = NE_linear_from_Uinc(Uinc, 0)
-NE_tuned = NE_from_Uinc(Uinc, 0, 1.0, 0.2)
-
+NE, NE_check = [], []
+for i, omega in enumerate(Omega_list):
+    NE.append(NE_linear_from_Uinc(Uinc, omega, [0.03, 0.025, 0.21]))
+    NE_check.append(NE_linear_from_Uinc(Uinc, omega, [0.02, 0.02, 0.1]))
+ 
+plt.figure()
+for i in range(len(Omega_list)):
+    plt.plot(Uinc, NE[i], color=colors[i])
+    plt.plot(Uinc, NE_check[i], '--', color=colors[i])
+    
+# NE_tuned = NE_from_Uinc(Uinc, 0, 1.0, 0.2)
+NE_linear = NE_linear_from_Uinc(U, 0, [0.03, 0.025, 0.21])
+NE_opt = NE_linear_from_Uinc(U, 0, [0.02, 0.02, 0.1])
+Hcr = 1.5
+NE_Jiang = (-0.001*Hcr + 0.012)*U/const
 plt.figure()
 plt.plot(U, NE_linear)
-plt.plot(U, NE_tuned, '--')
+plt.plot(U, NE_opt)
+plt.plot(U, NE_Jiang)
 plt.xlabel('U');plt.ylabel('NE')
 
-def calc_Pr(Uinc, Omega, params):
+def calc_Pr(Uinc, params):
     ap, bp, cp = params
     Pr = ap*np.exp(-bp*np.exp(-cp*abs(Uinc)/const))
     return Pr
 
 Uinc = np.linspace(0, 5, 100)
-Pr = calc_Pr(Uinc, 0, [0.74, 4.46, 0.10])
-Pr2 = calc_Pr(Uinc, 0, [0.45, 4.46, 0.10])
-Pr3 = calc_Pr(Uinc, 0, [0.99, 4.46, 0.10])
+Pr = calc_Pr(Uinc, [0.74, 4.46, 0.10])
+# Pr2 = calc_Pr(Uinc, [0.45, 4.46, 0.10])
+# Pr3 = calc_Pr(Uinc, [0.99, 4.46, 0.10])
 
+# plt.figure()
+# plt.plot(Uinc, Pr)
+# plt.plot(Uinc, Pr2)
+# plt.plot(Uinc, Pr3)
+
+# Pr4 = calc_Pr(Uinc, 0, [0.74, 1.0, 0.10])
+# Pr5 = calc_Pr(Uinc, 0, [0.74, 10.0, 0.10])
+
+# plt.figure()
+# plt.plot(Uinc, Pr)
+# plt.plot(Uinc, Pr4)
+# plt.plot(Uinc, Pr5)
+
+# Pr6 = calc_Pr(Uinc, 0, [0.74, 4.46, 0.01])
+# Pr7 = calc_Pr(Uinc, 0, [0.74, 4.46, 0.20])
+
+# plt.figure()
+# plt.plot(Uinc, Pr)
+# plt.plot(Uinc, Pr6)
+# plt.plot(Uinc, Pr7)
+
+Pr_opt = calc_Pr(Uinc, [0.95, 1.2, 0.2])
+# #anderson
+Pr_and = 0.95*(1-np.exp(-2*Uinc))
+# Jiang
+Hcr = 1.5
+Pr_Jiang = 0.9945*Hcr**(-0.0166)*(1-np.exp(-0.1992*Hcr**(-0.8686)*Uinc/const))
+Pr_test = 0.99*(1-np.exp(-4*Uinc))
 plt.figure()
-plt.plot(Uinc, Pr)
-plt.plot(Uinc, Pr2)
-plt.plot(Uinc, Pr3)
+plt.plot(Uinc, Pr, label='Paper 2')
+plt.plot(Uinc, Pr_opt, label='opt')
+plt.plot(Uinc, Pr_and, label='Anderson \& Haff (1991)')
+plt.plot(Uinc, Pr_Jiang, label='Jiang et al. (2024)')
+plt.plot(Uinc, Pr_test, label='test')
+plt.legend()
+plt.xlabel(r'$U_\mathrm{inc}$ [m/s]')
+plt.ylabel('Pr')
 
-Pr4 = calc_Pr(Uinc, 0, [0.74, 1.0, 0.10])
-Pr5 = calc_Pr(Uinc, 0, [0.74, 10.0, 0.10])
-
-plt.figure()
-plt.plot(Uinc, Pr)
-plt.plot(Uinc, Pr4)
-plt.plot(Uinc, Pr5)
-
-Pr6 = calc_Pr(Uinc, 0, [0.74, 4.46, 0.01])
-Pr7 = calc_Pr(Uinc, 0, [0.74, 4.46, 0.20])
-
-plt.figure()
-plt.plot(Uinc, Pr)
-plt.plot(Uinc, Pr6)
-plt.plot(Uinc, Pr7)
-
-Pr_opt = calc_Pr(Uinc, 0, [0.99, 1.20, 0.17])
-plt.figure()
-plt.plot(Uinc, Pr)
-plt.plot(Uinc, Pr_opt)
