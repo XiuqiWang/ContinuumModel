@@ -25,10 +25,11 @@ Shields = np.linspace(0.02, 0.06, 5)
 u_star = np.sqrt(Shields * (2650-1.225)*9.81*D/1.225)
 t = np.linspace(0, 5, 501)
 mp = 2650 * np.pi/6 * D**3 #particle mass
+const = np.sqrt(9.81*D)
 
 def CalMdrag(x, b_inf, k, cref):
     Ua, U, c = x
-    b = b_inf * (1.0 - np.exp(-k * U))
+    b = b_inf * (1.0 - np.exp(-k * U/const))
     burel = 1/(1+c/cref)
     Urel = burel*(b * Ua - U)
     Re = abs(Urel)*D/nu_a
@@ -92,11 +93,11 @@ for i in range(5): #Omega
         plt.subplot(3, 2, j+1)
         index_byS = i*5+j 
         Mdrag = CalMdrag([Ua_all_S[index_byS], U_all_S[index_byS], C_all_S[index_byS]], b_inf, k, cref)
-        plt.plot(t, Md_all_S[index_byS], '.', label=r'$\hat{M}_\mathrm{drag}$')
-        plt.plot(t, Mdrag, '.', label=r'$\breve{M}_{\mathrm{drag}}=f(\hat{U_\mathrm{air}}, \hat{U}, \hat{c}, b_\mathrm{urel}, b)$')
+        plt.plot(t, Md_all_S[index_byS], '.', label=r'$\hat{M}_\mathrm{sal}$')
+        plt.plot(t, Mdrag, '.', label=r'$\breve{M}_{\mathrm{sal}}=f(\hat{U_\mathrm{air}}, \hat{U}, \hat{c}, b_\mathrm{urel}, b)$')
         plt.title(fr"$\tilde{{\Theta}}$=0.0{j+2}")
         plt.xlabel(r'$t$ [s]')
-        plt.ylabel(r'$M_\mathrm{drag}$ [N/m$^2$]')
+        plt.ylabel(r'$M_\mathrm{sal}$ [N/m$^2$]')
         plt.ylim(0, 2.5)
         plt.xlim(0, 5)
         plt.grid(True)
