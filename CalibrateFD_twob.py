@@ -94,7 +94,7 @@ for i in range(5): #Omega
         index_byS = i*5+j 
         Mdrag = CalMdrag([Ua_all_S[index_byS], U_all_S[index_byS], C_all_S[index_byS]], b_inf, k, cref)
         plt.plot(t, Md_all_S[index_byS], '.', label=r'$\hat{M}_\mathrm{sal}$')
-        plt.plot(t, Mdrag, '.', label=r'$\breve{M}_{\mathrm{sal}}=f(\hat{U_\mathrm{air}}, \hat{U}, \hat{c}, b_\mathrm{urel}, b)$')
+        plt.plot(t, Mdrag, '.', label=r'$\breve{M}_{\mathrm{sal}}=f(\hat{U_\mathrm{air}}, \hat{U}, \hat{c}, b_\mathrm{Urel}, b)$')
         plt.title(fr"$\tilde{{\Theta}}$=0.0{j+2}")
         plt.xlabel(r'$t$ [s]')
         plt.ylabel(r'$M_\mathrm{sal}$ [N/m$^2$]')
