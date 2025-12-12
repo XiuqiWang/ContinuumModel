@@ -6,6 +6,7 @@ Created on Fri Oct 10 18:41:36 2025
 """
 
 import numpy as np
+import matplotlib.pyplot as plt
 
 def depth_avg_from_file(filename, z_min, z_max, lines_per_block, col_z=0, col_u=1):
     """
@@ -72,10 +73,18 @@ def depth_avg_from_file(filename, z_min, z_max, lines_per_block, col_z=0, col_u=
 
     return np.array(u_avg_list)
 
+g = 9.8
+d = 0.00025
+rho_a  = 1.225             # air density [kg/m^3] 
+rho_p  = 2650.0            # particle density [kg/m^3]   
+Shields_all = np.linspace(0.02, 0.06, 5)
+u_star_all  = np.sqrt(Shields_all * (rho_p - rho_a) * g * d / rho_a)
+tau_top = rho_a * u_star_all**2 
+
 Ua0_all = []
-for i in range(4):
+for i in range(5):
     filename = f"FinalS00{i+2}.txt"
-    z_min = 0.003 #12D
+    z_min = 13.5*d #12D
     z_max = 0.2
     lines_per_block = 1600
 
@@ -83,16 +92,15 @@ for i in range(4):
     print(f"S00{i+2}：", u_avg_per_block)
     Ua0_all.append(u_avg_per_block[0])
 
-# calibrate C_air,bed
-g = 9.8
-d = 0.00025
-rho_a  = 1.225             # air density [kg/m^3] 
-rho_p  = 2650.0            # particle density [kg/m^3]   
-Shields_all = np.linspace(0.02, 0.05, 4)
-u_star_all  = np.sqrt(Shields_all * (rho_p - rho_a) * g * d / rho_a)
-tau_top = rho_a * u_star_all**2 
-
 # tau_basic = 0.5 * rho_a * CD_bed * Ua * abs(Ua)
 Ua0_all = np.array(Ua0_all)
 CD_bed = tau_top*2/(rho_a*Ua0_all**2)
 print('CD_bed', CD_bed)
+
+plt.figure(figsize=(6,5))
+plt.plot(Shields_all, CD_bed, 'o')
+plt.xlabel(r'$\tilde{\Theta}$ [-]')
+plt.ylabel(r'$C_\mathrm{D,bed}$ [-]')
+plt.xticks([0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07])
+plt.ylim(0.003, 0.0045)
+plt.tight_layout()
