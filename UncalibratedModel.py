@@ -37,7 +37,7 @@ def CalUincfromU(U, c):
     # else:
     #     # Uinc = 0.85*U
     #     Uinc = 0.44*U**1.36
-    A = 1/(1 + c*5.26)
+    A = 1/(1 + c/0.19)
     Uinc = A*U
     return Uinc
 
@@ -46,10 +46,12 @@ def calc_T_jump_ballistic_assumption(Uinc, theta_inc):
     Tjump = 2*Uy0/g
     return Tjump 
 
-def calc_Pr(Uinc):
+def calc_Pr(Uinc, Omega):
     Pr = 0.74*np.exp(-4.46*np.exp(-0.10*Uinc/const))
-    # if Pr <0 or Pr>1:
-    #     print('Warning: Pr is not between 0 and 1')
+    # a_pr = 0.70 + 0.23*Omega**0.12
+    # b_pr = 0.01/(Omega + 0.0013)**1.59 + 3.18
+    # c_pr = 0.41 - 0.42 * Omega **0.12
+    # Pr = a_pr*np.exp(-b_pr*np.exp(-c_pr*Uinc/const))
     return Pr
 
 def e_COR_from_Uim(Uim, Omega):
@@ -155,31 +157,31 @@ def tau_top(u_star):
 #     fdrag = np.pi/8 * d**2 * rho_a * C_D * abs(dU) * dU                     
 #     return (c * fdrag) / mp
 
-def Fitb(U, c, b0=0.015, b_inf=0.79, k0=0.53, lamda=4.86):
-    k = k0/(1+lamda*c)
-    b = b0 + (b_inf - b0)*(1 - np.exp(-k*U))
-    return b
+# def Fitb(U, c, b0=0.015, b_inf=0.79, k0=0.53, lamda=4.86):
+#     k = k0/(1+lamda*c)
+#     b = b0 + (b_inf - b0)*(1 - np.exp(-k*U))
+#     return b
 
 def calc_Mdrag(Ua, U, c):
-    b = Fitb(U, c)
-    Urel = b * Ua - U
+    b = 0.84*(1-np.exp(-0.49*U))
+    burel = 1/(1+c/0.09)
+    Urel = burel*(b * Ua - U)
     Re = abs(Urel)*d/nu_a
+    Re = np.maximum(Re, 1e-6)
     Cd = (np.sqrt(Cd_inf)+np.sqrt(Ruc/Re))**2   
-    Mdrag = np.pi/8 * d**2 * rho_a * Urel * abs(Urel) * Cd * c/mp
+    Mdrag = np.pi/8 * d**2 * rho_a * Cd * Urel * abs(Urel) * c/mp
     return Mdrag
 
-def calc_Mbed(Ua, U, c):
+def calc_Mcreep(Ua, U, c):
     Mdrag = calc_Mdrag(Ua, U, c)
-    # CD_bed = 0.0037
-    # B, p = 3.5, 7.0
-    # tau_basic = 0.5 * rho_a * CD_bed * Ua * abs(Ua)
-    # M_bed = tau_basic * (1/(1+(B*Mdrag)**p)) # to guarantee that there is a balancing term with tau_top when c=0
-    M_bed = 1.38*Mdrag + 0.08 #temporarily...
+    M_bed = 1.21*Mdrag 
     return M_bed
 
+def calc_Maero(Ua):
+    Maero = 0.5*0.0037*rho_a*abs(Ua)*Ua
+    return Maero
+
 # --- Calculate rhs of the 3 equations ---
-E_all, D_all = [], []
-Rim_all = []
 def rhs_cmUa(t, y, u_star, Omega, eps=1e-16):
     c, m, Ua = y
     U = m/(c + eps)
@@ -187,7 +189,7 @@ def rhs_cmUa(t, y, u_star, Omega, eps=1e-16):
     Uinc = CalUincfromU(U, c)
     thetainc = theta_inc_from_Uinc(Uinc, Omega)
     Tim  = calc_T_jump_ballistic_assumption(Uinc, thetainc) + eps
-    Pr = calc_Pr(Uinc) 
+    Pr = calc_Pr(Uinc, Omega) 
 
     # mixing fractions and rates
     r_im = c/Tim
@@ -242,8 +244,9 @@ def rhs_cmUa(t, y, u_star, Omega, eps=1e-16):
 
     phi_term  = 1.0 - c/(rho_p*h)
     m_air_eff = rho_a*h*phi_term
-    M_bed = calc_Mbed(Ua, U, c)
-    dUa_dt    = (tau_top(u_star) - M_bed - M_drag) / m_air_eff
+    M_creep = calc_Mcreep(Ua, U, c)
+    M_aero = calc_Maero(Ua)
+    dUa_dt    = (tau_top(u_star) - M_aero - M_creep - M_drag) / m_air_eff
 
     return [dc_dt, dm_dt, dUa_dt]
 # ---------- simple Euler–forward integrator ----------
@@ -329,7 +332,7 @@ colors = plt.cm.viridis(np.linspace(1, 0, 5))  # 5 colors
 plt.close('all')
 for ui, ustar in enumerate(ustar_list):
 
-    fig, axes = plt.subplots(3, 1, figsize=(7, 10), sharex=True)
+    fig, axes = plt.subplots(3, 1, figsize=(7, 8), sharex=True)
     axC, axU, axUa = axes
 
     for oi, Omega in enumerate(Omega_list):
@@ -364,23 +367,113 @@ for ui, ustar in enumerate(ustar_list):
         
     axC.plot([], [], color='black', label=r"Continuum")
     axC.plot([], [], '--', color='black', label=r"DPM")
-    axC.set_ylabel('C [kg/m²]')
-    axC.set_title(fr'$\Theta$ = {Shields[ui]:.2f}')
+    axC.set_ylabel(r'$c$ [kg/m$^2$]')
+    axC.set_title(fr'$\tilde{{\Theta}}$ = {Shields[ui]:.2f}')
     axC.grid(True)
     axC.set_ylim(0, 0.4)
+    axC.set_xlim(0,5)
     axC.legend(fontsize=8)
 
-    axU.set_ylabel('U [m/s]')
+    axU.set_ylabel(r'$U$ [m/s]')
     axU.set_ylim(0, 9.5)
+    axU.set_xlim(0,5)
     axU.grid(True)
 
-    axUa.set_ylabel('Ua [m/s]')
-    axUa.set_xlabel('t [s]')
+    axUa.set_ylabel(r'$U_\mathrm{air}$ [m/s]')
+    axUa.set_xlabel(r'$t$ [s]')
     axUa.set_ylim(0, 13.5)
+    axUa.set_xlim(0,5)
     axUa.grid(True)
 
     plt.tight_layout()
     plt.show()
+    
+# in one figure
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.gridspec import GridSpec, GridSpecFromSubplotSpec
+
+fig = plt.figure(figsize=(12, 10), constrained_layout=True)
+
+# Outer grid: 2 rows × 3 columns
+outer = GridSpec(
+    2, 3,
+    figure=fig,
+    width_ratios=[1, 1, 1]
+)
+
+for ui, ustar in enumerate(ustar_list):
+
+    row = ui // 3
+    col = ui % 3
+
+    # ✅ Inner grid must use GridSpecFromSubplotSpec
+    inner = GridSpecFromSubplotSpec(
+        3, 1,
+        subplot_spec=outer[row, col]
+    )
+
+    axC  = fig.add_subplot(inner[0])
+    axU  = fig.add_subplot(inner[1], sharex=axC)
+    axUa = fig.add_subplot(inner[2], sharex=axC)
+
+    for oi, Omega in enumerate(Omega_list):
+
+        idx = oi * len(ustar_list) + ui
+
+        C_meas  = np.asarray(C_dpm[idx])
+        U_meas  = np.asarray(U_dpm[idx])
+        Ua_meas = np.asarray(Ua_dpm[idx])
+        t_meas  = np.linspace(0, 5, len(C_meas))
+
+        C_mod  = model_run[Omega][ustar]['c']
+        U_mod  = model_run[Omega][ustar]['U']
+        Ua_mod = model_run[Omega][ustar]['Ua']
+
+        axC.plot(t_mod, C_mod, color=colors[oi], label=fr'{Omega*100} $\%$')
+        axC.plot(t_meas, C_meas, '--', color=colors[oi])
+
+        axU.plot(t_mod, U_mod, color=colors[oi])
+        axU.plot(t_meas, U_meas, '--', color=colors[oi])
+
+        axUa.plot(t_mod, Ua_mod, color=colors[oi])
+        axUa.plot(t_meas, Ua_meas, '--', color=colors[oi])
+
+    axC.set_title(fr'$\tilde{{\Theta}}$ = {Shields[ui]:.2f}')
+    axC.set_ylim(0, 0.4)
+    axC.set_xlim(0, 5)
+    axC.grid(True)
+
+    axU.set_ylim(0, 9.5)
+    axU.set_xlim(0, 5)
+    axU.grid(True)
+
+    axUa.set_ylim(0, 13.5)
+    axUa.set_xlim(0, 5)
+    axUa.set_xlabel(r'$t$ [s]')
+    axUa.grid(True)
+
+    if col == 0:
+        axC.set_ylabel(r'$c$ [kg/m$^2$]')
+        axU.set_ylabel(r'$U$ [m/s]')
+        axUa.set_ylabel(r'$U_\mathrm{air}$ [m/s]')
+    else:
+        for ax in (axC, axU, axUa):
+            ax.set_yticklabels([])
+
+# Hide unused bottom-right panel
+ax_empty = fig.add_subplot(outer[1, 2])
+ax_empty.axis('off')
+
+# Legend once
+axC.plot([], [], color='black', label='Continuum')
+axC.plot([], [], '--', color='black', label='DPM')
+axC.legend(fontsize=8, loc='upper right')
+
+plt.show()
+
+
+    
 
 # chunk_size = 3000
 # plt.figure(figsize=(8,8))
