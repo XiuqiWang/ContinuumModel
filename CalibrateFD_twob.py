@@ -92,15 +92,17 @@ for i in range(5): #Omega
         plt.subplot(3, 2, j+1)
         index_byS = i*5+j 
         Mdrag = CalMdrag([Ua_all_S[index_byS], U_all_S[index_byS], C_all_S[index_byS]], b_inf, k, cref)
-        plt.plot(t, Md_all_S[index_byS], '.', label=r'DPM $\hat{M}_{drag}$')
-        plt.plot(t, Mdrag, '.', label=r'Computed $M_{\mathrm{drag}}=f(\hat{U_\mathrm{air}}, \hat{U}, \hat{c}, b_\mathrm{urel}, b)$')
-        plt.title(fr"$\tilde{{\Theta}}$=0.0{j+2}, $\Omega$={Omega[i]}%")
+        plt.plot(t, Md_all_S[index_byS], '.', label=r'$\hat{M}_\mathrm{drag}$')
+        plt.plot(t, Mdrag, '.', label=r'$\breve{M}_{\mathrm{drag}}=f(\hat{U_\mathrm{air}}, \hat{U}, \hat{c}, b_\mathrm{urel}, b)$')
+        plt.title(fr"$\tilde{{\Theta}}$=0.0{j+2}")
         plt.xlabel(r'$t$ [s]')
-        plt.ylabel(r'$M_{drag}$ [N/m$^2$]')
+        plt.ylabel(r'$M_\mathrm{drag}$ [N/m$^2$]')
         plt.ylim(0, 2.5)
         plt.xlim(0, 5)
         plt.grid(True)
-        plt.legend()
+        if j == 0:
+            plt.legend(fontsize=9, loc='upper right')
+    plt.suptitle(fr'$\Omega$={Omega[i]}%')
     plt.tight_layout()
     plt.show()
     
