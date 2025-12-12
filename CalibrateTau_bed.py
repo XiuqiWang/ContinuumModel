@@ -143,17 +143,18 @@ for i in range(5): #Omega
     for j in range(5): #Shields
         plt.subplot(3, 2, j+1)
         index_byS = i*5+j 
-        plt.plot(t, RHS_all_S[index_byS], '.', label=r'DPM $\hat{M}_{creep}=\tau_{top} -\rho_ah(1-\frac{c}{m_ph})\frac{d\hat{U}a}{dt} - \hat{M}_{drag} - \hat{M}_{aero}$')
+        plt.plot(t, RHS_all_S[index_byS], '.', label=r'$\hat{M}_\mathrm{rep}=\hat{M}_\mathrm{top,air} -\rho_\mathrm{air}h(1-\frac{\hat{c}}{m_\mathrm{p}h})\frac{d\hat{U}_\mathrm{air}}{dt} - \hat{M}_{sal} - \hat{M}_\mathrm{bed,air}$')
         Mcreep = CalMcreep(MD_all_S[index_byS], gamma)
-        plt.plot(t, Mcreep, '.', label=fr'Computed $M_{{\mathrm{{creep}}}} = {gamma:.2f}\,\hat{{M}}_{{\mathrm{{drag}}}}$')
-        plt.title(fr"$\tilde{{\Theta}}$=0.0{j+2}, $\Omega$={Omega[i]}%")
-        plt.xlabel("t [s]")
-        plt.ylabel(r"$M_{creep}$ [N/m$^2$]")
+        plt.plot(t, Mcreep, '.', label=fr'$\breve{{M}}_{{\mathrm{{rep}}}} = {gamma:.2f}\,\hat{{M}}_{{\mathrm{{sal}}}}$')
+        plt.title(fr"$\tilde{{\Theta}}$=0.0{j+2}")
+        plt.xlabel(r"$t$ [s]")
+        plt.ylabel(r"$M_\mathrm{rep}$ [N/m$^2$]")
         plt.ylim(0,2.5)
         plt.xlim(0,5)
         plt.grid(True)
         if j == 0:
             plt.legend(fontsize=9, loc='upper right')
+    plt.suptitle(fr'$\Omega$={Omega[i]}%')
     plt.tight_layout()
     plt.show()
 
