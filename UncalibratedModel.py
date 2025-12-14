@@ -8,6 +8,10 @@ Created on Wed Nov  5 14:46:00 2025
 import numpy as np
 from scipy.integrate import solve_ivp
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.gridspec import GridSpec, GridSpecFromSubplotSpec
 
 # -------------------- constants & inputs --------------------
 g = 9.81
@@ -28,6 +32,7 @@ mp = rho_p * np.pi/6.0 * d**3
 thetaE = np.deg2rad(24)
 
 Omega_list = [0.0, 0.01, 0.05, 0.10, 0.20]
+Omega_integer_list = [0, 1, 5, 10, 20]
 
 # -------------------- closures from the PDF --------------------
 def CalUincfromU(U, c):
@@ -389,11 +394,8 @@ for ui, ustar in enumerate(ustar_list):
     plt.show()
     
 # in one figure
-import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.gridspec import GridSpec, GridSpecFromSubplotSpec
 
-fig = plt.figure(figsize=(12, 10), constrained_layout=True)
+fig = plt.figure(figsize=(12, 10))
 
 # Outer grid: 2 rows × 3 columns
 outer = GridSpec(
@@ -461,14 +463,35 @@ for ui, ustar in enumerate(ustar_list):
         for ax in (axC, axU, axUa):
             ax.set_yticklabels([])
 
-# Hide unused bottom-right panel
-ax_empty = fig.add_subplot(outer[1, 2])
-ax_empty.axis('off')
+ax_leg = fig.add_subplot(outer[1, 2])
+ax_leg.axis('off')
 
-# Legend once
-axC.plot([], [], color='black', label='Continuum')
-axC.plot([], [], '--', color='black', label='DPM')
-axC.legend(fontsize=8, loc='upper right')
+legend_elements = []
+
+# Moisture levels (colors)
+for oi, Omega in enumerate(Omega_integer_list):
+    legend_elements.append(
+        Line2D(
+            [0], [0],
+            color=colors[oi],
+            lw=2,
+            label=fr'$\Omega$ = {Omega} %'
+        )
+    )
+
+# Line styles
+legend_elements += [
+    Line2D([0], [0], color='black', lw=2, label='Continuum'),
+    Line2D([0], [0], color='black', lw=2, linestyle='--', label='DPM'),
+]
+
+ax_leg.legend(
+    handles=legend_elements,
+    loc='center',
+    frameon=False,
+    fontsize=9,
+    ncol=1
+)
 
 plt.show()
 
