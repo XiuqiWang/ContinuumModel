@@ -8,6 +8,8 @@ import numpy as np
 from scipy.integrate import solve_ivp
 import matplotlib.pyplot as plt
 from scipy.optimize import minimize
+from matplotlib.lines import Line2D
+from matplotlib.gridspec import GridSpec, GridSpecFromSubplotSpec
 
 # -------------------- constants & inputs --------------------
 g = 9.81
@@ -29,6 +31,8 @@ mp = rho_p * (np.pi/6.0) * d**3
 thetaE = np.deg2rad(24)
 
 colors = plt.cm.viridis(np.linspace(1, 0, 5))  # 5 colors
+
+Omega_integer_list = [0, 1, 5, 10, 20]
 
 # -------------------- closures from the PDF --------------------
 def CalUincfromU(U, c):
@@ -358,69 +362,232 @@ model_run = simulate_model([0.99, 3.75, 0.02, 0.02, 0.08]) #[0.95, 1.2, 0.2, 0.0
 t_mod = np.linspace(0, 5, 501)
 dt = 0.01
 
-plt.close('all')
-for ui, ustar in enumerate(ustar_list):
-# ui, ustar = 3, ustar_list[-1]
 
-    fig, axes = plt.subplots(3, 1, figsize=(7, 10), sharex=True)
-    axC, axU, axUa = axes
+
+plt.close('all')
+# for ui, ustar in enumerate(ustar_list):
+# # ui, ustar = 3, ustar_list[-1]
+
+#     fig, axes = plt.subplots(3, 1, figsize=(7, 10), sharex=True)
+#     axC, axU, axUa = axes
     
+#     for oi, Omega in enumerate(Omega_list):
+    
+#         # measured series
+#         idx     = oi*len(ustar_list) + ui
+#         C_meas  = C_dpm[idx]
+#         U_meas  = U_dpm[idx]
+#         Ua_meas = Ua_dpm[idx]
+#         t_meas  = np.linspace(0, 5, len(C_meas))
+    
+#         # detect start idx
+#         start_idx = 0
+#         if start_idx is None:
+#             continue
+    
+#         # model series (already trimmed in simulate_model)
+#         C_mod  = model_run[Omega][ustar]['c']
+#         U_mod  = model_run[Omega][ustar]['U']
+#         Ua_mod = model_run[Omega][ustar]['Ua']
+#         t_mod  = model_run[Omega][ustar]['t']
+    
+#         # Now SHIFT model time to actual real time
+#         t_mod_shifted = t_mod + (start_idx * dt)
+    
+#         label = f'Ω={Omega}'
+    
+#         # --- Plot C ---
+#         axC.plot(t_meas, C_meas, '--', color=colors[oi])
+#         axC.plot(t_mod_shifted, C_mod, color=colors[oi], label=f'{label} – model')
+    
+#         # --- Plot U ---
+#         axU.plot(t_meas, U_meas, '--', color=colors[oi])
+#         axU.plot(t_mod_shifted, U_mod, color=colors[oi])
+    
+#         # --- Plot Ua ---
+#         axUa.plot(t_meas, Ua_meas, '--', color=colors[oi])
+#         axUa.plot(t_mod_shifted, Ua_mod, color=colors[oi])
+    
+#     axC.plot([], [], color='black', label=r"Continuum")
+#     axC.plot([], [], '--', color='black', label=r"DPM")
+#     axC.set_ylabel('C [kg/m²]')
+#     axC.set_title(fr'$\Theta$ = {Shields[ui]:.2f}')
+#     axC.grid(True)
+#     axC.set_ylim(0, 0.30)
+#     axC.legend(fontsize=8)
+    
+#     axU.set_ylabel('U [m/s]')
+#     axU.set_ylim(0, 9.5)
+#     axU.grid(True)
+    
+#     axUa.set_ylabel('Ua [m/s]')
+#     axUa.set_xlabel('t [s]')
+#     axUa.set_ylim(0, 13.5)
+#     axUa.grid(True)
+    
+#     plt.tight_layout()
+#     plt.show()
+
+# in one figure
+fig = plt.figure(figsize=(12, 12))
+
+# Outer grid: 2 rows × 3 columns
+outer = GridSpec(
+    2, 3,
+    figure=fig,
+    width_ratios=[1, 1, 1],
+    wspace=0.05,
+    hspace=0.2
+)
+
+for ui, ustar in enumerate(ustar_list):
+
+    row = ui // 3
+    col = ui % 3
+
+    # ✅ Inner grid must use GridSpecFromSubplotSpec
+    inner = GridSpecFromSubplotSpec(
+        3, 1,
+        subplot_spec=outer[row, col],
+    )
+
+    axC  = fig.add_subplot(inner[0])
+    axU  = fig.add_subplot(inner[1], sharex=axC)
+    axUa = fig.add_subplot(inner[2], sharex=axC)
+
     for oi, Omega in enumerate(Omega_list):
-    
-        # measured series
-        idx     = oi*len(ustar_list) + ui
-        C_meas  = C_dpm[idx]
-        U_meas  = U_dpm[idx]
-        Ua_meas = Ua_dpm[idx]
+
+        idx = oi * len(ustar_list) + ui
+
+        C_meas  = np.asarray(C_dpm[idx])
+        U_meas  = np.asarray(U_dpm[idx])
+        Ua_meas = np.asarray(Ua_dpm[idx])
         t_meas  = np.linspace(0, 5, len(C_meas))
-    
-        # detect start idx
-        start_idx = 0
-        if start_idx is None:
-            continue
-    
-        # model series (already trimmed in simulate_model)
+
         C_mod  = model_run[Omega][ustar]['c']
         U_mod  = model_run[Omega][ustar]['U']
         Ua_mod = model_run[Omega][ustar]['Ua']
-        t_mod  = model_run[Omega][ustar]['t']
-    
-        # Now SHIFT model time to actual real time
-        t_mod_shifted = t_mod + (start_idx * dt)
-    
-        label = f'Ω={Omega}'
-    
-        # --- Plot C ---
+
+        axC.plot(t_mod, C_mod, color=colors[oi], label=fr'{Omega*100} $\%$')
         axC.plot(t_meas, C_meas, '--', color=colors[oi])
-        axC.plot(t_mod_shifted, C_mod, color=colors[oi], label=f'{label} – model')
-    
-        # --- Plot U ---
+
+        axU.plot(t_mod, U_mod, color=colors[oi])
         axU.plot(t_meas, U_meas, '--', color=colors[oi])
-        axU.plot(t_mod_shifted, U_mod, color=colors[oi])
-    
-        # --- Plot Ua ---
+
+        axUa.plot(t_mod, Ua_mod, color=colors[oi])
         axUa.plot(t_meas, Ua_meas, '--', color=colors[oi])
-        axUa.plot(t_mod_shifted, Ua_mod, color=colors[oi])
-    
-    axC.plot([], [], color='black', label=r"Continuum")
-    axC.plot([], [], '--', color='black', label=r"DPM")
-    axC.set_ylabel('C [kg/m²]')
-    axC.set_title(fr'$\Theta$ = {Shields[ui]:.2f}')
+
+    axC.set_title(fr'$\tilde{{\Theta}}$ = {Shields[ui]:.2f}')
+    axC.set_ylim(0, 0.3)
+    axC.set_xlim(0, 5)
     axC.grid(True)
-    axC.set_ylim(0, 0.30)
-    axC.legend(fontsize=8)
-    
-    axU.set_ylabel('U [m/s]')
+
     axU.set_ylim(0, 9.5)
+    axU.set_xlim(0, 5)
     axU.grid(True)
-    
-    axUa.set_ylabel('Ua [m/s]')
-    axUa.set_xlabel('t [s]')
+
     axUa.set_ylim(0, 13.5)
+    axUa.set_xlim(0, 5)
+    axUa.set_xlabel(r'$t$ [s]')
     axUa.grid(True)
-    
-    plt.tight_layout()
-    plt.show()
+
+    if col == 0:
+        axC.set_ylabel(r'$c$ [kg/m$^2$]')
+        axU.set_ylabel(r'$U$ [m/s]')
+        axUa.set_ylabel(r'$U_\mathrm{air}$ [m/s]')
+    else:
+        for ax in (axC, axU, axUa):
+            ax.set_yticklabels([])
+
+ax_leg = fig.add_subplot(outer[1, 2])
+ax_leg.axis('off')
+
+legend_elements = []
+
+# Moisture levels (colors)
+for oi, Omega in enumerate(Omega_integer_list):
+    legend_elements.append(
+        Line2D(
+            [0], [0],
+            color=colors[oi],
+            lw=2,
+            label=fr'$\Omega$ = {Omega} %'
+        )
+    )
+
+# Line styles
+legend_elements += [
+    Line2D([0], [0], color='black', lw=2, label='Continuum'),
+    Line2D([0], [0], color='black', lw=2, linestyle='--', label='DPM'),
+]
+
+ax_leg.legend(
+    handles=legend_elements,
+    loc='center',
+    frameon=False,
+    fontsize=10,
+    ncol=1
+)
+
+plt.show()
+
+def r2_score(y, ypred):
+    ss_res = np.sum((y - ypred)**2)
+    ss_tot = np.sum((y - np.mean(y))**2)
+    return 1.0 - ss_res/ss_tot
+
+def compute_overall_r2(model_run, C_dpm, U_dpm, Ua_dpm,
+                       Omega_list, ustar_list):
+
+    y_all = []
+    y_pred_all = []
+
+    for i, Omega in enumerate(Omega_list):
+        for j, ustar in enumerate(ustar_list):
+
+            idx = i * len(ustar_list) + j
+
+            # measured
+            C_meas  = np.asarray(C_dpm[idx])
+            U_meas  = np.asarray(U_dpm[idx])
+            Ua_meas = np.asarray(Ua_dpm[idx])
+
+            # model
+            out = model_run[Omega][ustar]
+            c_mod  = np.asarray(out['c'])
+            U_mod  = np.asarray(out['U'])
+            Ua_mod = np.asarray(out['Ua'])
+            idx0   = out['idx0']
+
+            # align lengths
+            n = min(len(c_mod), len(C_meas) - idx0)
+            if n <= 5:
+                continue
+
+            # stack all three quantities
+            y_all.append(C_meas[idx0:idx0+n])
+            y_pred_all.append(c_mod[:n])
+
+            y_all.append(U_meas[idx0:idx0+n])
+            y_pred_all.append(U_mod[:n])
+
+            y_all.append(Ua_meas[idx0:idx0+n])
+            y_pred_all.append(Ua_mod[:n])
+
+    # concatenate into single vectors
+    y_all = np.concatenate(y_all)
+    y_pred_all = np.concatenate(y_pred_all)
+
+    return r2_score(y_all, y_pred_all)
+
+R2_overall = compute_overall_r2(
+    model_run,
+    C_dpm, U_dpm, Ua_dpm,
+    Omega_list, ustar_list
+)
+
+print(f"Overall R² (c, U, Ua combined) = {R2_overall:.3f}")
+
 
     
 # plt.figure()
