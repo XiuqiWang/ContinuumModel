@@ -9,8 +9,6 @@ import numpy as np
 from scipy.integrate import solve_ivp
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
-import numpy as np
-import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec, GridSpecFromSubplotSpec
 
 # -------------------- constants & inputs --------------------
@@ -36,13 +34,8 @@ Omega_integer_list = [0, 1, 5, 10, 20]
 
 # -------------------- closures from the PDF --------------------
 def CalUincfromU(U, c):
-    # if Omega == 0:
-    #     # Uinc = 0.43*U
-    #     Uinc = 0.61*U**0.44
-    # else:
-    #     # Uinc = 0.85*U
-    #     Uinc = 0.44*U**1.36
-    A = 1/(1 + c/0.19)
+    # A = 1/(1 + c/0.19)
+    A = 1/(1 + c/0.28)
     Uinc = A*U
     return Uinc
 
@@ -52,57 +45,47 @@ def calc_T_jump_ballistic_assumption(Uinc, theta_inc):
     return Tjump 
 
 def calc_Pr(Uinc, Omega):
-    Pr = 0.74*np.exp(-4.46*np.exp(-0.10*Uinc/const))
-    # a_pr = 0.70 + 0.23*Omega**0.12
-    # b_pr = 0.01/(Omega + 0.0013)**1.59 + 3.18
-    # c_pr = 0.41 - 0.42 * Omega **0.12
-    # Pr = a_pr*np.exp(-b_pr*np.exp(-c_pr*Uinc/const))
+    # Pr = 0.74*np.exp(-4.46*np.exp(-0.10*Uinc/const))
+    Pr = 0.91*(1-np.exp(-0.0268*Uinc/const))
     return Pr
 
 def e_COR_from_Uim(Uim, Omega):
     mu = 312.48
     sigma = 156.27
-    e_com = 3.18*(abs(Uim)/const)**(-0.50) + 0.12*np.log(1 + 1061.81*Omega)*np.exp(- (abs(Uim)/const - mu)**2/(2*sigma**2) )   
+    # e_com = 3.18*(abs(Uim)/const)**(-0.50) + 0.12*np.log(1 + 1061.81*Omega)*np.exp(- (abs(Uim)/const - mu)**2/(2*sigma**2) )   
+    e_com = 2.57*(abs(Uim)/const)**(-0.42) + 0.08*np.log(1 + 2000*Omega)*np.exp(- (abs(Uim)/const - mu)**2/(2*sigma**2) )   
     e = min(e_com, 1.0)
     return e          
 
 def theta_inc_from_Uinc(Uinc, Omega):
-    # alpha = -113.89*Omega + 67.78 
-    # beta = -260.77 * Omega + 248.51
-    # x = alpha / (abs(Uinc)/const + beta)  
-    # theta_inc = np.arcsin(x)
+    # alpha = 0.27 - 0.05*Omega**0.15
+    # beta = -0.0029
     alpha = 0.27 - 0.05*Omega**0.15
-    beta = -0.0029
+    beta = -0.0027
     x = alpha * np.exp(beta * abs(Uinc)/const)  
     theta_inc = np.arcsin(x)
     if theta_inc < 0 or theta_inc > np.pi / 2: 
         print('The value of theta_inc is not logical')                                     
-    return theta_inc
-
-# def theta_D_from_UD(UD):
-#     x = 163.68 / (abs(UD) / const + 156.65)
-#     x = np.clip(x, 0.0, 1.0)
-#     theta = 0.28 * np.arcsin(x)
-#     return np.clip(theta, 0.0, 0.5 * np.pi)                   
+    return theta_inc    
 
 def theta_reb_from_Uim(Uim, Omega):
-    x = -0.0032*Omega**0.39 *(abs(Uim)/const) + 0.43 
+    # x = -0.0032*Omega**0.39 *(abs(Uim)/const) + 0.43 
+    x = (-0.0007 - 0.0021*Omega**0.81)*(abs(Uim)/const) + 0.41
     theta_re = np.arcsin(x)
     if theta_re < 0 or theta_re > np.pi / 2: 
         print('The value of theta_re is not logical')                              
     return theta_re
 
 def NE_from_Uinc(Uinc, Omega): 
-    # return (0.03-0.028*Omega**0.19) * (abs(Uinc)/const) 
-    NE = (0.03 - 0.025*Omega**0.21) * (abs(Uinc)/const) 
+    # NE = (0.03 - 0.025*Omega**0.21) * (abs(Uinc)/const) 
+    NE = (0.027 - 0.023*Omega**0.19) * (abs(Uinc)/const) 
     return NE
 
 def UE_from_Uinc(Uinc, Omega):
-    # A = -2.13*Omega + 4.60
-    # B = 0.40*Omega**0.24 + 0.15
-    # U_E = A*(abs(Uinc)/const)**B * const
-    A = -1.51*Omega + 4.62
-    B = 0.37*Omega**0.26 + 0.019
+    # A = -1.51*Omega + 4.62
+    # B = 0.37*Omega**0.26 + 0.019
+    A = -10.38*Omega + 4.81
+    B = 0.034 + 0.92*Omega**0.57
     U_E = A*(abs(Uinc)/const)**B * const
     return U_E * np.sign(Uinc)  
 
@@ -394,14 +377,15 @@ for ui, ustar in enumerate(ustar_list):
     plt.show()
     
 # in one figure
-
-fig = plt.figure(figsize=(12, 10))
+fig = plt.figure(figsize=(12, 12))
 
 # Outer grid: 2 rows × 3 columns
 outer = GridSpec(
     2, 3,
     figure=fig,
-    width_ratios=[1, 1, 1]
+    width_ratios=[1, 1, 1],
+    wspace=0.05,
+    hspace=0.2
 )
 
 for ui, ustar in enumerate(ustar_list):
@@ -412,7 +396,7 @@ for ui, ustar in enumerate(ustar_list):
     # ✅ Inner grid must use GridSpecFromSubplotSpec
     inner = GridSpecFromSubplotSpec(
         3, 1,
-        subplot_spec=outer[row, col]
+        subplot_spec=outer[row, col],
     )
 
     axC  = fig.add_subplot(inner[0])
@@ -442,7 +426,7 @@ for ui, ustar in enumerate(ustar_list):
         axUa.plot(t_meas, Ua_meas, '--', color=colors[oi])
 
     axC.set_title(fr'$\tilde{{\Theta}}$ = {Shields[ui]:.2f}')
-    axC.set_ylim(0, 0.4)
+    axC.set_ylim(0, 0.3)
     axC.set_xlim(0, 5)
     axC.grid(True)
 
@@ -489,7 +473,7 @@ ax_leg.legend(
     handles=legend_elements,
     loc='center',
     frameon=False,
-    fontsize=9,
+    fontsize=10,
     ncol=1
 )
 
