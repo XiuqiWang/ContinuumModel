@@ -36,7 +36,8 @@ Omega_integer_list = [0, 1, 5, 10, 20]
 
 # -------------------- closures from the PDF --------------------
 def CalUincfromU(U, c):
-    A = 1/(1 + c/0.19)
+    # A = 1/(1 + c/0.19)
+    A = 1/(1 + c/0.28)
     Uinc = A*U
     return Uinc
 
@@ -56,21 +57,27 @@ def calc_Pr(Uinc, params):
     # A = min(A, 0.999)
     # Pr = A*np.exp(-B*np.exp(-0.10*Uinc/const))
     # Pr = 0.74*np.exp(-4.46*np.exp(-0.1*abs(Uinc)/const))
-    ap, bp, _, _, _ = params #0.74, 4.46, 0.10
+    # ap, bp, cp = params#0.74, 4.46, 0.10
     # Pr = ap*np.exp(-bp*np.exp(-cp*abs(Uinc)/const))
-    Pr = ap * (1-np.exp(-bp*Uinc))
+    ap, bp, _,_,_ = params
+    Pr = ap * (1-np.exp(-bp*abs(Uinc)/const))
+    # Pr = 0.95*(1-np.exp(-2*Uinc))
+    # Pr = 0.97*(1-np.exp(-3.5*Uinc))
     return Pr
 
 def e_COR_from_Uim(Uim, Omega):
     mu = 312.48
     sigma = 156.27
-    e_com = 3.18*(abs(Uim)/const)**(-0.50) + 0.12*np.log(1 + 1061.81*Omega)*np.exp(- (abs(Uim)/const - mu)**2/(2*sigma**2) )     
+    # e_com = 3.18*(abs(Uim)/const)**(-0.50) + 0.12*np.log(1 + 1061.81*Omega)*np.exp(- (abs(Uim)/const - mu)**2/(2*sigma**2) ) 
+    e_com = 2.57*(abs(Uim)/const)**(-0.42) + 0.08*np.log(1 + 2000*Omega)*np.exp(- (abs(Uim)/const - mu)**2/(2*sigma**2) )       
     e = min(e_com, 1.0)
     return e          
 
 def theta_inc_from_Uinc(Uinc, Omega):
+    # alpha = 0.27 - 0.05*Omega**0.15
+    # beta = -0.0029
     alpha = 0.27 - 0.05*Omega**0.15
-    beta = -0.0029
+    beta = -0.0027
     x = alpha * np.exp(beta * abs(Uinc)/const)  
     theta_inc = np.arcsin(x)
     if theta_inc < 0 or theta_inc > np.pi / 2: 
@@ -78,7 +85,8 @@ def theta_inc_from_Uinc(Uinc, Omega):
     return theta_inc
 
 def theta_reb_from_Uim(Uim, Omega):
-    x = (-0.0032*Omega**0.39)*(abs(Uim)/const) + 0.43 
+    # x = (-0.0032*Omega**0.39)*(abs(Uim)/const) + 0.43 
+    x = (-0.0007 - 0.0021*Omega**0.81)*(abs(Uim)/const) + 0.41
     theta_re = np.arcsin(x)
     if theta_re < 0 or theta_re > np.pi / 2: 
         print('The value of theta_re is not logical')                              
@@ -86,13 +94,15 @@ def theta_reb_from_Uim(Uim, Omega):
 
 def NE_from_Uinc(Uinc, Omega, params): 
     # NE = (0.03 - 0.025*Omega**0.21) * (abs(Uinc)/const) 
-    _,_, ane, bne, cne = params#0.03, 0.025, 0.21
+    _,_,ane, bne, cne = params #0.03, 0.025, 0.21
     NE = (ane - bne*Omega**cne) * (abs(Uinc)/const) 
     return NE
 
 def UE_from_Uinc(Uinc, Omega):
-    A = -1.51*Omega + 4.62
-    B = 0.37*Omega**0.26 + 0.019
+    # A = -1.51*Omega + 4.62
+    # B = 0.37*Omega**0.26 + 0.019
+    A = -10.38*Omega + 4.81
+    B = 0.034 + 0.92*Omega**0.57
     U_E = A*(abs(Uinc)/const)**B * const
     return U_E * np.sign(Uinc)  
 
@@ -348,20 +358,19 @@ def cost_function(params):
     return cost
 
 # initial guess
-# x0 = [0.99, 1.00, 0.13]#, 0.02, 0.02, 0.1]#[0.75, 8.0, 0.1#[0.05, 0.05, 3.5, 7.0]#, 0.50, 1.0]
-# bounds = [(0.2, 0.99), (1.0, 10.0), (0.05, 0.20)]#, (0.02, 0.035), (0.02, 0.03), (0.1, 0.25)]#[(0.10, 0.99),(1e-6, 15.0), (0.001, 0.5),#(1e-6, 1.0), (1e-6, 1.0), (1e-6, None), (1e-6, None)]#, (0.01, 1.0), (0.01, 2.0)]
+# x0 = [0.91, 0.05, 0.02, 0.02, 0.2]#[0.99, 1.00, 0.13, 0.02, 0.02, 0.1]
+# bounds = [(0.2, 0.99), (0.01, 0.5), (0.02, 0.035), (0.02, 0.03), (0.05, 0.25)]#[(0.10, 0.99),(1e-6, 15.0), (0.001, 0.5),#(1e-6, 1.0), (1e-6, 1.0), (1e-6, None), (1e-6, None)]#, (0.01, 1.0), (0.01, 2.0)]
 
 # res = minimize(cost_function, x0, bounds=bounds, method='L-BFGS-B')
 
-# param_names = ['a_Pr', 'b_Pr', 'c_Pr']#,'a_NE', 'b_NE', 'c_NE']
+# param_names = ['a_Pr', 'b_Pr','a_NE', 'b_NE', 'c_NE']
 
 # for name, value in zip(param_names, res.x):
 #     print(f"{name:>6} = {value:.6f}")
 
-model_run = simulate_model([0.99, 3.75, 0.02, 0.02, 0.08]) #[0.95, 1.2, 0.2, 0.02, 0.02, 0.1]) #
+model_run = simulate_model([0.91, 0.22, 0.021, 0.02, 0.19]) #[0.95, 1.2, 0.2, 0.02, 0.02, 0.1]) #
 t_mod = np.linspace(0, 5, 501)
 dt = 0.01
-
 
 
 plt.close('all')
@@ -428,7 +437,7 @@ plt.close('all')
 #     plt.tight_layout()
 #     plt.show()
 
-# in one figure
+# # in one figure
 fig = plt.figure(figsize=(12, 12))
 
 # Outer grid: 2 rows × 3 columns
@@ -537,7 +546,7 @@ def r2_score(y, ypred):
     return 1.0 - ss_res/ss_tot
 
 def compute_overall_r2(model_run, C_dpm, U_dpm, Ua_dpm,
-                       Omega_list, ustar_list):
+                        Omega_list, ustar_list):
 
     y_all = []
     y_pred_all = []
