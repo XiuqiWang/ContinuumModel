@@ -46,7 +46,7 @@ def calc_T_jump_ballistic_assumption(Uinc, theta_inc):
 
 def calc_Pr(Uinc, Omega):
     # Pr = 0.74*np.exp(-4.46*np.exp(-0.10*Uinc/const))
-    Pr = 0.91*(1-np.exp(-0.0268*Uinc/const))
+    Pr = 0.91*(1-np.exp(-0.0268*abs(Uinc)/const))
     return Pr
 
 def e_COR_from_Uim(Uim, Omega):
