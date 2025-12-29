@@ -36,7 +36,8 @@ Omega_integer_list = [0, 1, 5, 10, 20]
 
 # -------------------- closures from the PDF --------------------
 def CalUincfromU(U, c):
-    A = 1/(1 + c/0.19)
+    # A = 1/(1 + c/0.19)
+    A = 1/(1 + c/0.28)
     Uinc = A*U
     return Uinc
 
@@ -45,7 +46,7 @@ def calc_T_jump_ballistic_assumption(Uinc, theta_inc):
     Tjump = 2*Uy0/g
     return Tjump 
 
-def calc_Pr(Uinc, params, Omega):
+def calc_Pr(Uinc, params):
     # kA, kB = 0, 0 #params
     # # A0 = 0.74
     # # B0 = 3.66
@@ -59,7 +60,7 @@ def calc_Pr(Uinc, params, Omega):
     # ap, bp, cp = params#0.74, 4.46, 0.10
     # Pr = ap*np.exp(-bp*np.exp(-cp*abs(Uinc)/const))
     ap, bp, _,_,_ = params
-    Pr = ap * (1-np.exp(-bp*Uinc))
+    Pr = ap * (1-np.exp(-bp*abs(Uinc)/const))
     # Pr = 0.95*(1-np.exp(-2*Uinc))
     # Pr = 0.97*(1-np.exp(-3.5*Uinc))
     return Pr
@@ -67,13 +68,16 @@ def calc_Pr(Uinc, params, Omega):
 def e_COR_from_Uim(Uim, Omega):
     mu = 312.48
     sigma = 156.27
-    e_com = 3.18*(abs(Uim)/const)**(-0.50) + 0.12*np.log(1 + 1061.81*Omega)*np.exp(- (abs(Uim)/const - mu)**2/(2*sigma**2) )     
+    # e_com = 3.18*(abs(Uim)/const)**(-0.50) + 0.12*np.log(1 + 1061.81*Omega)*np.exp(- (abs(Uim)/const - mu)**2/(2*sigma**2) ) 
+    e_com = 2.57*(abs(Uim)/const)**(-0.42) + 0.08*np.log(1 + 2000*Omega)*np.exp(- (abs(Uim)/const - mu)**2/(2*sigma**2) )       
     e = min(e_com, 1.0)
     return e          
 
 def theta_inc_from_Uinc(Uinc, Omega):
+    # alpha = 0.27 - 0.05*Omega**0.15
+    # beta = -0.0029
     alpha = 0.27 - 0.05*Omega**0.15
-    beta = -0.0029
+    beta = -0.0027
     x = alpha * np.exp(beta * abs(Uinc)/const)  
     theta_inc = np.arcsin(x)
     if theta_inc < 0 or theta_inc > np.pi / 2: 
@@ -81,7 +85,8 @@ def theta_inc_from_Uinc(Uinc, Omega):
     return theta_inc
 
 def theta_reb_from_Uim(Uim, Omega):
-    x = (-0.0032*Omega**0.39)*(abs(Uim)/const) + 0.43 
+    # x = (-0.0032*Omega**0.39)*(abs(Uim)/const) + 0.43 
+    x = (-0.0007 - 0.0021*Omega**0.81)*(abs(Uim)/const) + 0.41
     theta_re = np.arcsin(x)
     if theta_re < 0 or theta_re > np.pi / 2: 
         print('The value of theta_re is not logical')                              
@@ -94,8 +99,10 @@ def NE_from_Uinc(Uinc, Omega, params):
     return NE
 
 def UE_from_Uinc(Uinc, Omega):
-    A = -1.51*Omega + 4.62
-    B = 0.37*Omega**0.26 + 0.019
+    # A = -1.51*Omega + 4.62
+    # B = 0.37*Omega**0.26 + 0.019
+    A = -10.38*Omega + 4.81
+    B = 0.034 + 0.92*Omega**0.57
     U_E = A*(abs(Uinc)/const)**B * const
     return U_E * np.sign(Uinc)  
 
@@ -155,7 +162,7 @@ def rhs_cmUa(t, y, u_star, Omega, params):
     Uinc = CalUincfromU(U, c)
     thetainc = theta_inc_from_Uinc(Uinc, Omega)
     Tim  = calc_T_jump_ballistic_assumption(Uinc, thetainc) + eps
-    Pr = calc_Pr(Uinc, params, Omega)
+    Pr = calc_Pr(Uinc, params)
 
     # mixing fractions and rates
     r_im = c/Tim 
@@ -283,7 +290,7 @@ def simulate_model(params):
             U_meas = U_dpm[index]
             Ua_meas = Ua_dpm[index]
     
-            start_idx = detect_start_idx(C_meas, 0.075)
+            start_idx = detect_start_idx(C_meas, Cref_start)
             if start_idx is None:
                 # no saltation → ignore
                 continue
@@ -326,7 +333,7 @@ def cost_function(params):
             U_meas = U_dpm[index]
             Ua_meas = Ua_dpm[index]
 
-            start_idx = detect_start_idx(C_meas, 0.075)
+            start_idx = detect_start_idx(C_meas, Cref_start)
             if start_idx is None:
                 continue
 
@@ -350,18 +357,21 @@ def cost_function(params):
 
     return cost
 
+Cref_start = 0.075
 # initial guess
-# x0 = [0.99, 3.5, 0.02, 0.02, 0.1]#[0.99, 1.00, 0.13, 0.02, 0.02, 0.1]
-# bounds = [(0.2, 0.99), (1.0, 10.0), (0.02, 0.035), (0.02, 0.03), (0.1, 0.25)]#[(0.10, 0.99),(1e-6, 15.0), (0.001, 0.5),#(1e-6, 1.0), (1e-6, 1.0), (1e-6, None), (1e-6, None)]#, (0.01, 1.0), (0.01, 2.0)]
+# x0 = [0.91, 0.05, 0.02, 0.02, 0.2]#[0.99, 1.00, 0.13, 0.02, 0.02, 0.1]
+# bounds = [(0.2, 0.99), (0.01, 0.5), (0.02, 0.035), (0.02, 0.03), (0.05, 0.25)]#[(0.10, 0.99),(1e-6, 15.0), (0.001, 0.5),#(1e-6, 1.0), (1e-6, 1.0), (1e-6, None), (1e-6, None)]#, (0.01, 1.0), (0.01, 2.0)]
 
 # res = minimize(cost_function, x0, bounds=bounds, method='L-BFGS-B')
 
-# param_names = ['a_Pr', 'b_Pr', 'c_Pr','a_NE', 'b_NE', 'c_NE']
+# param_names = ['a_Pr', 'b_Pr','a_NE', 'b_NE', 'c_NE']
 
 # for name, value in zip(param_names, res.x):
 #     print(f"{name:>6} = {value:.6f}")
 
-model_run = simulate_model([0.99, 3.75, 0.02, 0.02, 0.08]) #
+# [0.99, 0.18, 0.02, 0.02, 0.08]
+# original 0.91, 0.0268, 0.027, 0.023, 0.19
+model_run = simulate_model([0.91, 0.22, 0.021, 0.021, 0.15]) #
 t_mod = np.linspace(0, 5, 501)
 dt = 0.01
 
@@ -382,7 +392,7 @@ for ui, ustar in enumerate(ustar_list):
         t_meas  = np.linspace(0, 5, len(C_meas))
     
         # detect start idx
-        start_idx = detect_start_idx(C_meas, 0.075)
+        start_idx = detect_start_idx(C_meas, Cref_start)
         if start_idx is None:
             continue
     
@@ -430,7 +440,7 @@ for ui, ustar in enumerate(ustar_list):
     plt.show()
     
 # in one figure
-fig = plt.figure(figsize=(12, 10))
+fig = plt.figure(figsize=(12, 12))
 
 # Outer grid: 2 rows × 2 columns
 outer = GridSpec(
@@ -463,7 +473,7 @@ for ui, ustar in enumerate(ustar_list[:4]):  # only first 4 Shields
         Ua_meas = Ua_dpm[idx]
         t_meas  = np.linspace(0, 5, len(C_meas))
 
-        start_idx = detect_start_idx(C_meas, 0.075)
+        start_idx = detect_start_idx(C_meas, Cref_start)
         if start_idx is None:
             continue
 
@@ -511,7 +521,7 @@ legend_elements = []
 for oi, Omega in enumerate(Omega_integer_list):
     legend_elements.append(
         Line2D([0], [0], color=colors[oi], lw=2,
-               label=fr'$\Omega$ = {Omega} %')
+                label=fr'$\Omega$ = {Omega} %')
     )
 
 legend_elements += [
@@ -534,7 +544,7 @@ fig.legend(
     loc='center left',
     bbox_to_anchor=(0.84, 0.5),
     frameon=False,
-    fontsize=9
+    fontsize=10
 )
 
 plt.show()
@@ -545,7 +555,7 @@ def r2_score(y, ypred):
     return 1.0 - ss_res/ss_tot
 
 def compute_overall_r2(model_run, C_dpm, U_dpm, Ua_dpm,
-                       Omega_list, ustar_list):
+                        Omega_list, ustar_list):
 
     y_all = []
     y_pred_all = []
@@ -560,7 +570,7 @@ def compute_overall_r2(model_run, C_dpm, U_dpm, Ua_dpm,
             U_meas  = np.asarray(U_dpm[idx])
             Ua_meas = np.asarray(Ua_dpm[idx])
             
-            start_idx = detect_start_idx(C_meas, 0.075)
+            start_idx = detect_start_idx(C_meas, Cref_start)
             if start_idx is None:
                 continue
             
@@ -574,7 +584,7 @@ def compute_overall_r2(model_run, C_dpm, U_dpm, Ua_dpm,
             n = min(len(c_mod), len(C_meas) - idx0)
             if n <= 5:
                 continue
-
+            
             # stack all three quantities
             y_all.append(C_meas[idx0:idx0+n])
             y_pred_all.append(c_mod[:n])
@@ -599,33 +609,33 @@ R2_overall = compute_overall_r2(
 
 print(f"Overall R² (c, U, Ua combined) = {R2_overall:.3f}")
     
-# plt.figure()
-# for i in range(4):
-#     plt.plot(t_mod, ustar_list[i]*np.ones(len(t_mod)))
-#     plt.plot(t_mod[:-1], model_run[0][ustar_list[i]]['Mdrag_eff'])
-# plt.xlabel('t')
-# plt.ylabel('balance between tau_top and Mdrag,eff')
+# # plt.figure()
+# # for i in range(4):
+# #     plt.plot(t_mod, ustar_list[i]*np.ones(len(t_mod)))
+# #     plt.plot(t_mod[:-1], model_run[0][ustar_list[i]]['Mdrag_eff'])
+# # plt.xlabel('t')
+# # plt.ylabel('balance between tau_top and Mdrag,eff')
 
-# # steady C
-# mean_cs, mean_us, mean_uas = [], [], []
+# # # steady C
+# # mean_cs, mean_us, mean_uas = [], [], []
 
-# for Omega in model_run:
-#     for ustar in model_run[Omega]:
-#         c_array = model_run[Omega][ustar]['c']
-#         u_array = model_run[Omega][ustar]['U']
-#         ua_array = model_run[Omega][ustar]['Ua']
-#         mean_cs.append(np.mean(c_array[100:]))
-#         mean_us.append(np.mean(u_array[100:]))
-#         mean_uas.append(np.mean(ua_array[100:]))
+# # for Omega in model_run:
+# #     for ustar in model_run[Omega]:
+# #         c_array = model_run[Omega][ustar]['c']
+# #         u_array = model_run[Omega][ustar]['U']
+# #         ua_array = model_run[Omega][ustar]['Ua']
+# #         mean_cs.append(np.mean(c_array[100:]))
+# #         mean_us.append(np.mean(u_array[100:]))
+# #         mean_uas.append(np.mean(ua_array[100:]))
         
-# Uinc = CalUincfromU(mean_us[-1], Omega_list)
-# thetainc = theta_inc_from_Uinc(Uinc, Omega_list)
-# Tim  = calc_T_jump_ballistic_assumption(Uinc, thetainc) 
-# r_im = mean_cs[-1]/Tim
+# # Uinc = CalUincfromU(mean_us[-1], Omega_list)
+# # thetainc = theta_inc_from_Uinc(Uinc, Omega_list)
+# # Tim  = calc_T_jump_ballistic_assumption(Uinc, thetainc) 
+# # r_im = mean_cs[-1]/Tim
 
-# NEim = NE_from_Uinc(Uinc, Omega_list)*(1-0.5*Omega_list)      
-# Pr   = calc_Pr(Uinc)*(1-2.0*Omega_list)
+# # NEim = NE_from_Uinc(Uinc, Omega_list)*(1-0.5*Omega_list)      
+# # Pr   = calc_Pr(Uinc)*(1-2.0*Omega_list)
 
-# E = r_im * NEim
-# D = r_im * (1 - Pr)
-# print(Omega_list, E/D)
+# # E = r_im * NEim
+# # D = r_im * (1 - Pr)
+# # print(Omega_list, E/D)
