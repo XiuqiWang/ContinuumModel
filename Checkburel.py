@@ -8,38 +8,6 @@ Created on Tue Nov 18 10:58:34 2025
 import numpy as np
 import matplotlib.pyplot as plt 
 
-# burel - c
-c = np.linspace(0, 0.3)
-Cref_urel = 0.0088
-burel1 = 1/(1+c/Cref_urel)
-burel2 = 1/np.sqrt(1+c/Cref_urel)
-
-Mdrag_order1 = c*burel1**2
-Mdrag_order2 = c*burel2**2
-
-plt.figure()
-plt.plot(c, burel2, label='burel=1/np.sqrt(1+c/Cref_urel)')
-plt.xlabel('c')
-plt.ylabel('b_urel')
-plt.legend()
-
-plt.figure()
-plt.plot(c, Mdrag_order1, label='burel1=1/(1+c/Cref_urel)')
-plt.plot(c, Mdrag_order2, label='burel2=1/np.sqrt(1+c/Cref_urel)')
-plt.xlabel('c')
-plt.ylabel('Mdrag_order')
-plt.legend()
-
-# b - c
-Cref = 1.0
-b = np.sqrt(1 - c/(c+Cref))
-plt.figure()
-plt.plot(c, b, label='b=np.sqrt(1-c/(c+Cref))')
-plt.xlabel('c')
-plt.ylabel('b')
-plt.legend()
-
-
 def CalUincfromU(U, Omega):
     a0, b0 = 0.92, 0.58
     # a1, b1 = 0.01, 0.99
@@ -58,33 +26,12 @@ def CalUincfromU(U, Omega):
 U = np.linspace(0, 10, 100)
 Omega = [0, 0.01, 0.05, 0.1, 0.2]
 colors = plt.cm.viridis(np.linspace(1, 0, 5))
-plt.figure()
-for i in range(5):
-    Uinc = CalUincfromU(U, Omega[i])
-    plt.plot(U, Uinc, color=colors[i])
-plt.xlabel('U')
-plt.ylabel('Uinc')
 
 # tuning NE for low Uinc can help improve the increase phase of C (unfinished)
 # Omega effect needs to be added for the tuning part
 g = 9.81
 d = 0.00025                # grain diameter [m]  
 const = np.sqrt(g*d)       # √(g d)
-
-def CalUincfromU(U, Omega):
-    Cref, Cref_urel, B, p = 1.0, 0.0088, 9.52, 18.05 
-    a0, b0 = 0.92, 0.58
-    a1, b1 = 0.01, 0.99
-    # if Omega == 0:
-    #     # Uinc = 0.43*U
-    #     Uinc = 0.61*U**0.44
-    # else:
-    #     # Uinc = 0.85*U
-    #     Uinc = 0.44*U**1.36
-    A = a0 - a1*Omega
-    n = b0 + b1*Omega
-    Uinc = A*U**n
-    return Uinc
 
 def NE_linear_from_Uinc(Uinc, Omega, params):
     a, b, c = params
@@ -98,35 +45,37 @@ def NE_from_Uinc(Uinc, Omega, Uc, dU):
     return NE
 
 Omega_list = [0, 0.01, 0.05, 0.1, 0.2]
-U = np.linspace(0, 5, 100)
-Uinc = CalUincfromU(U, 0)
-NE, NE_check = [], []
-for i, omega in enumerate(Omega_list):
-    NE.append(NE_linear_from_Uinc(Uinc, omega, [0.03, 0.025, 0.21]))
-    NE_check.append(NE_linear_from_Uinc(Uinc, omega, [0.02, 0.02, 0.1]))
+Uinc = np.linspace(0, 8, 100)
+# NE, NE_check = [], []
+# for i, omega in enumerate(Omega_list):
+#     NE.append(NE_linear_from_Uinc(Uinc, omega, [0.03, 0.025, 0.21]))
+#     NE_check.append(NE_linear_from_Uinc(Uinc, omega, [0.02, 0.02, 0.1]))
  
-plt.figure()
-for i in range(len(Omega_list)):
-    plt.plot(Uinc, NE[i], color=colors[i])
-    plt.plot(Uinc, NE_check[i], '--', color=colors[i])
+# plt.figure()
+# for i in range(len(Omega_list)):
+#     plt.plot(Uinc, NE[i], color=colors[i])
+#     plt.plot(Uinc, NE_check[i], '--', color=colors[i])
     
 # NE_tuned = NE_from_Uinc(Uinc, 0, 1.0, 0.2)
-NE_linear = NE_linear_from_Uinc(U, 0, [0.03, 0.025, 0.21])
-NE_opt = NE_linear_from_Uinc(U, 0, [0.02, 0.02, 0.1])
+NE_linear = NE_linear_from_Uinc(Uinc, 0, [0.03, 0.025, 0.21])
+NE_opt = NE_linear_from_Uinc(Uinc, 0, [0.021, 0.021, 0.15])
 Hcr = 1.5
-NE_Jiang = (-0.001*Hcr + 0.012)*U/const
+NE_Jiang = (-0.001*Hcr + 0.012)*Uinc/const
 plt.figure()
-plt.plot(U, NE_linear)
-plt.plot(U, NE_opt)
-plt.plot(U, NE_Jiang)
-plt.xlabel('U');plt.ylabel('NE')
+plt.plot(Uinc, NE_linear, label='Original')
+plt.plot(Uinc, NE_opt, label='Optimal')
+plt.plot(Uinc, NE_Jiang, 'k', label='Jiang et al. (2024)')
+plt.legend()
+plt.xlabel(r'$U_\mathrm{inc}$ [m/s]');plt.ylabel(r'$N_\mathrm{E}$ [-]')
+plt.xlim(left=0);plt.ylim(bottom=0)
+
 
 def calc_Pr(Uinc, params):
     ap, bp, cp = params
     Pr = ap*np.exp(-bp*np.exp(-cp*abs(Uinc)/const))
     return Pr
 
-Uinc = np.linspace(0, 5, 100)
+Uinc = np.linspace(0, 12, 100)
 Pr = calc_Pr(Uinc, [0.74, 4.46, 0.10])
 # Pr2 = calc_Pr(Uinc, [0.45, 4.46, 0.10])
 # Pr3 = calc_Pr(Uinc, [0.99, 4.46, 0.10])
@@ -152,20 +101,22 @@ Pr = calc_Pr(Uinc, [0.74, 4.46, 0.10])
 # plt.plot(Uinc, Pr6)
 # plt.plot(Uinc, Pr7)
 
-Pr_opt = calc_Pr(Uinc, [0.95, 1.2, 0.2])
+# Pr_opt = calc_Pr(Uinc, [0.95, 1.2, 0.2])
+Pr_ori = 0.9143*(1-np.exp(-0.0268*Uinc/const))
 # #anderson
 Pr_and = 0.95*(1-np.exp(-2*Uinc))
 # Jiang
 Hcr = 1.5
 Pr_Jiang = 0.9945*Hcr**(-0.0166)*(1-np.exp(-0.1992*Hcr**(-0.8686)*Uinc/const))
-Pr_test = 0.99*(1-np.exp(-4*Uinc))
+Pr_test = 0.91*(1-np.exp(-0.22*Uinc/const))
 plt.figure()
-plt.plot(Uinc, Pr, label='Paper 2')
-plt.plot(Uinc, Pr_opt, label='opt')
-plt.plot(Uinc, Pr_and, label='Anderson \& Haff (1991)')
-plt.plot(Uinc, Pr_Jiang, label='Jiang et al. (2024)')
-plt.plot(Uinc, Pr_test, label='test')
+plt.plot(Uinc, Pr_ori, label='Original')
+# plt.plot(Uinc, Pr_opt, label='opt')
+plt.plot(Uinc, Pr_test, label='Optimal')
+plt.plot(Uinc, Pr_and, 'k', label='Anderson & Haff (1991)')
+plt.plot(Uinc, Pr_Jiang, 'k--', label='Jiang et al. (2024)')
 plt.legend()
 plt.xlabel(r'$U_\mathrm{inc}$ [m/s]')
-plt.ylabel('Pr')
+plt.ylabel('Pr [-]')
+plt.xlim(left=0);plt.ylim(bottom=0)
 
