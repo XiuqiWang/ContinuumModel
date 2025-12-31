@@ -56,6 +56,20 @@ def extract_liquid_bridge_z_positions(filename):
 
                 if was_in_contact != 1:
                     continue  # skip non-contacting bridges
+                    
+                
+                # ---- Check liquid bridge volume ----
+                if "liquidBridgeVolume" not in tokens:
+                    continue
+    
+                try:
+                    vol_idx = tokens.index("liquidBridgeVolume")
+                    lb_volume = float(tokens[vol_idx + 1])
+                except (IndexError, ValueError):
+                    continue
+    
+                if lb_volume <= 0.0:
+                    continue    
 
                 # Extract contact-point z-position
                 if "contactPoint" in tokens:
@@ -79,7 +93,7 @@ bridge_z_all   = {tag: [] for tag in moisture_tags}
 
 for tag in moisture_tags:
     for i, idx in enumerate(file_indices):
-        filename = f"vtuData/restart/S005{tag}IniOTR.restart.{idx}"
+        filename = f"S005{tag}IniOTR.restart.{idx}"
     
         if not os.path.isfile(filename):
             print(f"Missing file: {filename}")
