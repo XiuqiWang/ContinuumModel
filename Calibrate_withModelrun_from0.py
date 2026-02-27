@@ -438,7 +438,7 @@ plt.close('all')
 #     plt.show()
 
 # # in one figure
-fig = plt.figure(figsize=(12, 12))
+fig = plt.figure(figsize=(12, 24))
 
 # Outer grid: 2 rows × 3 columns
 outer = GridSpec(
@@ -534,7 +534,7 @@ ax_leg.legend(
     handles=legend_elements,
     loc='center',
     frameon=False,
-    fontsize=10,
+    fontsize=14,
     ncol=1
 )
 
