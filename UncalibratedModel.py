@@ -10,6 +10,9 @@ from scipy.integrate import solve_ivp
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from matplotlib.gridspec import GridSpec, GridSpecFromSubplotSpec
+import time
+
+start = time.time()
 
 # -------------------- constants & inputs --------------------
 g = 9.81
@@ -288,15 +291,56 @@ for label in omega_labels:
         Ua_dpm.append(Ua)
 
 # ---------- run it ---------- 
+# def simulate_model():
+
+#     model_output = {Omega: {} for Omega in Omega_list}
+
+#     for i, Omega in enumerate(Omega_list):
+#         for j, ustar in enumerate(ustar_list):
+#             index = i*5+j
+#             y0 = (C_dpm[index][0], C_dpm[index][0]*U_dpm[index][0], Ua_dpm[index][0])
+#             t, Y = euler_forward(rhs_cmUa, y0, (0.0, 5.0), 1e-2, ustar, Omega)
+    
+#             c  = Y[0]
+#             m  = Y[1]
+#             Ua = Y[2]
+#             U  = m / np.maximum(c, 1e-16)
+    
+#             model_output[Omega][ustar] = {
+#                 'c': c,
+#                 'U': U,
+#                 'Ua': Ua,
+#             }
+
+#     return model_output
 def simulate_model():
-
     model_output = {Omega: {} for Omega in Omega_list}
-
+    dt = 1e-2
+    
     for i, Omega in enumerate(Omega_list):
         for j, ustar in enumerate(ustar_list):
-            index = i*5+j
-            y0 = (C_dpm[index][0], C_dpm[index][0]*U_dpm[index][0], Ua_dpm[index][0])
-            t, Y = euler_forward(rhs_cmUa, y0, (0.0, 5.0), 1e-2, ustar, Omega)
+        # j, ustar = 3, ustar_list[-1]
+            index = i*len(ustar_list)+j
+    
+            C_meas = C_dpm[index]
+            U_meas = U_dpm[index]
+            Ua_meas = Ua_dpm[index]
+    
+            start_idx = 0
+            if start_idx is None:
+                # no saltation → ignore
+                continue
+    
+            # initial conditions set from data at start point
+            C0 = C_meas[start_idx]
+            U0 = U_meas[start_idx]
+            Ua0 = Ua_meas[start_idx]
+    
+            y0 = (C0, C0*U0, Ua0)
+    
+            # simulate model from that initial point over remaining time
+            total_time = 5.0 - start_idx*dt
+            t, Y = euler_forward(rhs_cmUa, y0, (0.0, total_time), dt, ustar, Omega)
     
             c  = Y[0]
             m  = Y[1]
@@ -304,80 +348,85 @@ def simulate_model():
             U  = m / np.maximum(c, 1e-16)
     
             model_output[Omega][ustar] = {
+                't': t,
+                'idx0': start_idx,
                 'c': c,
                 'U': U,
                 'Ua': Ua,
             }
-
     return model_output
 
 model_run = simulate_model()
 t_mod = np.linspace(0, 5, 501)
 
+end = time.time()
+
+print(f"Runtime: {end - start:.4f} seconds")
+
 # ---------- plot ----------
 colors = plt.cm.viridis(np.linspace(1, 0, 5))  # 5 colors
 
 plt.close('all')
-for ui, ustar in enumerate(ustar_list):
+# for ui, ustar in enumerate(ustar_list):
 
-    fig, axes = plt.subplots(3, 1, figsize=(7, 8), sharex=True)
-    axC, axU, axUa = axes
+#     fig, axes = plt.subplots(3, 1, figsize=(7, 8), sharex=True)
+#     axC, axU, axUa = axes
 
-    for oi, Omega in enumerate(Omega_list):
+#     for oi, Omega in enumerate(Omega_list):
 
-        # measured data index: i*5 + j
-        idx = oi*len(ustar_list) + ui
+#         # measured data index: i*5 + j
+#         idx = oi*len(ustar_list) + ui
         
-        # measured
-        C_meas  = C_dpm[idx]
-        U_meas  = U_dpm[idx]
-        Ua_meas = Ua_dpm[idx]
-        t_meas  = np.linspace(0, 5, len(C_meas))
+#         # measured
+#         C_meas  = C_dpm[idx]
+#         U_meas  = U_dpm[idx]
+#         Ua_meas = Ua_dpm[idx]
+#         t_meas  = np.linspace(0, 5, len(C_meas))
 
-        # model
-        C_mod   = model_run[Omega][ustar]['c']
-        U_mod   = model_run[Omega][ustar]['U']
-        Ua_mod  = model_run[Omega][ustar]['Ua']
+#         # model
+#         C_mod   = model_run[Omega][ustar]['c']
+#         U_mod   = model_run[Omega][ustar]['U']
+#         Ua_mod  = model_run[Omega][ustar]['Ua']
 
-        label = fr'Ω={Omega*100} $\%$'
+#         label = fr'Ω={Omega*100} $\%$'
 
-        # --- Plot C ---
-        axC.plot(t_mod, C_mod, color=colors[oi], label=f'{label}')
-        axC.plot(t_meas, C_meas, '--', color=colors[oi])
+#         # --- Plot C ---
+#         axC.plot(t_mod, C_mod, color=colors[oi], label=f'{label}')
+#         axC.plot(t_meas, C_meas, '--', color=colors[oi])
 
-        # --- Plot U ---
-        axU.plot(t_mod, U_mod, color=colors[oi])
-        axU.plot(t_meas, U_meas, '--', color=colors[oi])
+#         # --- Plot U ---
+#         axU.plot(t_mod, U_mod, color=colors[oi])
+#         axU.plot(t_meas, U_meas, '--', color=colors[oi])
 
-        # --- Plot Ua ---
-        axUa.plot(t_mod, Ua_mod, color=colors[oi])
-        axUa.plot(t_meas, Ua_meas, '--', color=colors[oi])
+#         # --- Plot Ua ---
+#         axUa.plot(t_mod, Ua_mod, color=colors[oi])
+#         axUa.plot(t_meas, Ua_meas, '--', color=colors[oi])
         
-    axC.plot([], [], color='black', label=r"Continuum")
-    axC.plot([], [], '--', color='black', label=r"DPM")
-    axC.set_ylabel(r'$c$ [kg/m$^2$]')
-    axC.set_title(fr'$\tilde{{\Theta}}$ = {Shields[ui]:.2f}')
-    axC.grid(True)
-    axC.set_ylim(0, 0.4)
-    axC.set_xlim(0,5)
-    axC.legend(fontsize=8)
+#     axC.plot([], [], color='black', label=r"Continuum")
+#     axC.plot([], [], '--', color='black', label=r"DPM")
+#     axC.set_ylabel(r'$c$ [kg/m$^2$]')
+#     axC.set_title(fr'$\tilde{{\Theta}}$ = {Shields[ui]:.2f}')
+#     axC.grid(True)
+#     axC.set_ylim(0, 0.4)
+#     axC.set_xlim(0,5)
+#     axC.legend(fontsize=8)
 
-    axU.set_ylabel(r'$U$ [m/s]')
-    axU.set_ylim(0, 9.5)
-    axU.set_xlim(0,5)
-    axU.grid(True)
+#     axU.set_ylabel(r'$U$ [m/s]')
+#     axU.set_ylim(0, 9.5)
+#     axU.set_xlim(0,5)
+#     axU.grid(True)
 
-    axUa.set_ylabel(r'$U_\mathrm{air}$ [m/s]')
-    axUa.set_xlabel(r'$t$ [s]')
-    axUa.set_ylim(0, 13.5)
-    axUa.set_xlim(0,5)
-    axUa.grid(True)
+#     axUa.set_ylabel(r'$U_\mathrm{air}$ [m/s]')
+#     axUa.set_xlabel(r'$t$ [s]')
+#     axUa.set_ylim(0, 13.5)
+#     axUa.set_xlim(0,5)
+#     axUa.grid(True)
 
-    plt.tight_layout()
-    plt.show()
+#     plt.tight_layout()
+#     plt.show()
     
 # in one figure
-fig = plt.figure(figsize=(12, 12))
+fig = plt.figure(figsize=(12, 24))
 
 # Outer grid: 2 rows × 3 columns
 outer = GridSpec(
@@ -473,14 +522,69 @@ ax_leg.legend(
     handles=legend_elements,
     loc='center',
     frameon=False,
-    fontsize=10,
+    fontsize=14,
     ncol=1
 )
 
 plt.show()
 
+def r2_score(y, ypred):
+    ss_res = np.sum((y - ypred)**2)
+    ss_tot = np.sum((y - np.mean(y))**2)
+    return 1.0 - ss_res/ss_tot
 
-    
+def compute_overall_r2(model_run, C_dpm, U_dpm, Ua_dpm,
+                        Omega_list, ustar_list):
+
+    y_all = []
+    y_pred_all = []
+
+    for i, Omega in enumerate(Omega_list):
+        for j, ustar in enumerate(ustar_list):
+
+            idx = i * len(ustar_list) + j
+
+            # measured
+            C_meas  = np.asarray(C_dpm[idx])
+            U_meas  = np.asarray(U_dpm[idx])
+            Ua_meas = np.asarray(Ua_dpm[idx])
+
+            # model
+            out = model_run[Omega][ustar]
+            c_mod  = np.asarray(out['c'])
+            U_mod  = np.asarray(out['U'])
+            Ua_mod = np.asarray(out['Ua'])
+            idx0   = out['idx0']
+
+            # align lengths
+            n = min(len(c_mod), len(C_meas) - idx0)
+            if n <= 5:
+                continue
+
+            # stack all three quantities
+            y_all.append(C_meas[idx0:idx0+n])
+            y_pred_all.append(c_mod[:n])
+
+            y_all.append(U_meas[idx0:idx0+n])
+            y_pred_all.append(U_mod[:n])
+
+            y_all.append(Ua_meas[idx0:idx0+n])
+            y_pred_all.append(Ua_mod[:n])
+
+    # concatenate into single vectors
+    y_all = np.concatenate(y_all)
+    y_pred_all = np.concatenate(y_pred_all)
+
+    return r2_score(y_all, y_pred_all)
+
+
+R2_overall = compute_overall_r2(
+    model_run,
+    C_dpm, U_dpm, Ua_dpm,
+    Omega_list, ustar_list
+)
+
+print(f"Overall R² (c, U, Ua combined) = {R2_overall:.3f}")    
 
 # chunk_size = 3000
 # plt.figure(figsize=(8,8))
