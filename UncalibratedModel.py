@@ -367,166 +367,166 @@ print(f"Runtime: {end - start:.4f} seconds")
 colors = plt.cm.viridis(np.linspace(1, 0, 5))  # 5 colors
 
 plt.close('all')
-# for ui, ustar in enumerate(ustar_list):
-
-#     fig, axes = plt.subplots(3, 1, figsize=(7, 8), sharex=True)
-#     axC, axU, axUa = axes
-
-#     for oi, Omega in enumerate(Omega_list):
-
-#         # measured data index: i*5 + j
-#         idx = oi*len(ustar_list) + ui
-        
-#         # measured
-#         C_meas  = C_dpm[idx]
-#         U_meas  = U_dpm[idx]
-#         Ua_meas = Ua_dpm[idx]
-#         t_meas  = np.linspace(0, 5, len(C_meas))
-
-#         # model
-#         C_mod   = model_run[Omega][ustar]['c']
-#         U_mod   = model_run[Omega][ustar]['U']
-#         Ua_mod  = model_run[Omega][ustar]['Ua']
-
-#         label = fr'Ω={Omega*100} $\%$'
-
-#         # --- Plot C ---
-#         axC.plot(t_mod, C_mod, color=colors[oi], label=f'{label}')
-#         axC.plot(t_meas, C_meas, '--', color=colors[oi])
-
-#         # --- Plot U ---
-#         axU.plot(t_mod, U_mod, color=colors[oi])
-#         axU.plot(t_meas, U_meas, '--', color=colors[oi])
-
-#         # --- Plot Ua ---
-#         axUa.plot(t_mod, Ua_mod, color=colors[oi])
-#         axUa.plot(t_meas, Ua_meas, '--', color=colors[oi])
-        
-#     axC.plot([], [], color='black', label=r"Continuum")
-#     axC.plot([], [], '--', color='black', label=r"DPM")
-#     axC.set_ylabel(r'$c$ [kg/m$^2$]')
-#     axC.set_title(fr'$\tilde{{\Theta}}$ = {Shields[ui]:.2f}')
-#     axC.grid(True)
-#     axC.set_ylim(0, 0.4)
-#     axC.set_xlim(0,5)
-#     axC.legend(fontsize=8)
-
-#     axU.set_ylabel(r'$U$ [m/s]')
-#     axU.set_ylim(0, 9.5)
-#     axU.set_xlim(0,5)
-#     axU.grid(True)
-
-#     axUa.set_ylabel(r'$U_\mathrm{air}$ [m/s]')
-#     axUa.set_xlabel(r'$t$ [s]')
-#     axUa.set_ylim(0, 13.5)
-#     axUa.set_xlim(0,5)
-#     axUa.grid(True)
-
-#     plt.tight_layout()
-#     plt.show()
-    
-# in one figure
-fig = plt.figure(figsize=(12, 24))
-
-# Outer grid: 2 rows × 3 columns
-outer = GridSpec(
-    2, 3,
-    figure=fig,
-    width_ratios=[1, 1, 1],
-    wspace=0.05,
-    hspace=0.2
-)
-
 for ui, ustar in enumerate(ustar_list):
 
-    row = ui // 3
-    col = ui % 3
-
-    # ✅ Inner grid must use GridSpecFromSubplotSpec
-    inner = GridSpecFromSubplotSpec(
-        3, 1,
-        subplot_spec=outer[row, col],
-    )
-
-    axC  = fig.add_subplot(inner[0])
-    axU  = fig.add_subplot(inner[1], sharex=axC)
-    axUa = fig.add_subplot(inner[2], sharex=axC)
+    fig, axes = plt.subplots(3, 1, figsize=(7, 9), sharex=True)
+    axC, axU, axUa = axes
 
     for oi, Omega in enumerate(Omega_list):
 
-        idx = oi * len(ustar_list) + ui
-
-        C_meas  = np.asarray(C_dpm[idx])
-        U_meas  = np.asarray(U_dpm[idx])
-        Ua_meas = np.asarray(Ua_dpm[idx])
+        # measured data index: i*5 + j
+        idx = oi*len(ustar_list) + ui
+        
+        # measured
+        C_meas  = C_dpm[idx]
+        U_meas  = U_dpm[idx]
+        Ua_meas = Ua_dpm[idx]
         t_meas  = np.linspace(0, 5, len(C_meas))
 
-        C_mod  = model_run[Omega][ustar]['c']
-        U_mod  = model_run[Omega][ustar]['U']
-        Ua_mod = model_run[Omega][ustar]['Ua']
+        # model
+        C_mod   = model_run[Omega][ustar]['c']
+        U_mod   = model_run[Omega][ustar]['U']
+        Ua_mod  = model_run[Omega][ustar]['Ua']
 
-        axC.plot(t_mod, C_mod, color=colors[oi], label=fr'{Omega*100} $\%$')
+        label = fr'Ω={Omega*100} $\%$'
+
+        # --- Plot C ---
+        axC.plot(t_mod, C_mod, color=colors[oi], label=f'{label}')
         axC.plot(t_meas, C_meas, '--', color=colors[oi])
 
+        # --- Plot U ---
         axU.plot(t_mod, U_mod, color=colors[oi])
         axU.plot(t_meas, U_meas, '--', color=colors[oi])
 
+        # --- Plot Ua ---
         axUa.plot(t_mod, Ua_mod, color=colors[oi])
         axUa.plot(t_meas, Ua_meas, '--', color=colors[oi])
-
-    axC.set_title(fr'$\tilde{{\Theta}}$ = {Shields[ui]:.2f}')
-    axC.set_ylim(0, 0.3)
-    axC.set_xlim(0, 5)
+        
+    axC.plot([], [], color='black', label=r"Continuum")
+    axC.plot([], [], '--', color='black', label=r"DPM")
+    axC.set_ylabel('C [kg/m²]', fontsize=14)
+    axC.set_title(f'$\\tilde{{\\Theta}}$ = {Shields[ui]:.2f}', fontsize=14)
     axC.grid(True)
-
+    axC.set_ylim(0, 0.30)
+    axC.set_xlim(0, 5)
+    axC.legend(fontsize=12)
+    
+    axU.set_ylabel('U [m/s]', fontsize=14)
     axU.set_ylim(0, 9.5)
     axU.set_xlim(0, 5)
     axU.grid(True)
-
+    
+    axUa.set_ylabel('Ua [m/s]', fontsize=14)
+    axUa.set_xlabel('t [s]')
     axUa.set_ylim(0, 13.5)
     axUa.set_xlim(0, 5)
-    axUa.set_xlabel(r'$t$ [s]')
     axUa.grid(True)
+    
+    plt.tight_layout()
+    plt.show()
+    
+# in one figure
+# fig = plt.figure(figsize=(12, 24))
 
-    if col == 0:
-        axC.set_ylabel(r'$c$ [kg/m$^2$]')
-        axU.set_ylabel(r'$U$ [m/s]')
-        axUa.set_ylabel(r'$U_\mathrm{air}$ [m/s]')
-    else:
-        for ax in (axC, axU, axUa):
-            ax.set_yticklabels([])
+# # Outer grid: 2 rows × 3 columns
+# outer = GridSpec(
+#     2, 3,
+#     figure=fig,
+#     width_ratios=[1, 1, 1],
+#     wspace=0.05,
+#     hspace=0.2
+# )
 
-ax_leg = fig.add_subplot(outer[1, 2])
-ax_leg.axis('off')
+# for ui, ustar in enumerate(ustar_list):
 
-legend_elements = []
+#     row = ui // 3
+#     col = ui % 3
 
-# Moisture levels (colors)
-for oi, Omega in enumerate(Omega_integer_list):
-    legend_elements.append(
-        Line2D(
-            [0], [0],
-            color=colors[oi],
-            lw=2,
-            label=fr'$\Omega$ = {Omega} %'
-        )
-    )
+#     # ✅ Inner grid must use GridSpecFromSubplotSpec
+#     inner = GridSpecFromSubplotSpec(
+#         3, 1,
+#         subplot_spec=outer[row, col],
+#     )
 
-# Line styles
-legend_elements += [
-    Line2D([0], [0], color='black', lw=2, label='Continuum'),
-    Line2D([0], [0], color='black', lw=2, linestyle='--', label='DPM'),
-]
+#     axC  = fig.add_subplot(inner[0])
+#     axU  = fig.add_subplot(inner[1], sharex=axC)
+#     axUa = fig.add_subplot(inner[2], sharex=axC)
 
-ax_leg.legend(
-    handles=legend_elements,
-    loc='center',
-    frameon=False,
-    fontsize=14,
-    ncol=1
-)
+#     for oi, Omega in enumerate(Omega_list):
 
-plt.show()
+#         idx = oi * len(ustar_list) + ui
+
+#         C_meas  = np.asarray(C_dpm[idx])
+#         U_meas  = np.asarray(U_dpm[idx])
+#         Ua_meas = np.asarray(Ua_dpm[idx])
+#         t_meas  = np.linspace(0, 5, len(C_meas))
+
+#         C_mod  = model_run[Omega][ustar]['c']
+#         U_mod  = model_run[Omega][ustar]['U']
+#         Ua_mod = model_run[Omega][ustar]['Ua']
+
+#         axC.plot(t_mod, C_mod, color=colors[oi], label=fr'{Omega*100} $\%$')
+#         axC.plot(t_meas, C_meas, '--', color=colors[oi])
+
+#         axU.plot(t_mod, U_mod, color=colors[oi])
+#         axU.plot(t_meas, U_meas, '--', color=colors[oi])
+
+#         axUa.plot(t_mod, Ua_mod, color=colors[oi])
+#         axUa.plot(t_meas, Ua_meas, '--', color=colors[oi])
+
+#     axC.set_title(fr'$\tilde{{\Theta}}$ = {Shields[ui]:.2f}')
+#     axC.set_ylim(0, 0.3)
+#     axC.set_xlim(0, 5)
+#     axC.grid(True)
+
+#     axU.set_ylim(0, 9.5)
+#     axU.set_xlim(0, 5)
+#     axU.grid(True)
+
+#     axUa.set_ylim(0, 13.5)
+#     axUa.set_xlim(0, 5)
+#     axUa.set_xlabel(r'$t$ [s]')
+#     axUa.grid(True)
+
+#     if col == 0:
+#         axC.set_ylabel(r'$c$ [kg/m$^2$]')
+#         axU.set_ylabel(r'$U$ [m/s]')
+#         axUa.set_ylabel(r'$U_\mathrm{air}$ [m/s]')
+#     else:
+#         for ax in (axC, axU, axUa):
+#             ax.set_yticklabels([])
+
+# ax_leg = fig.add_subplot(outer[1, 2])
+# ax_leg.axis('off')
+
+# legend_elements = []
+
+# # Moisture levels (colors)
+# for oi, Omega in enumerate(Omega_integer_list):
+#     legend_elements.append(
+#         Line2D(
+#             [0], [0],
+#             color=colors[oi],
+#             lw=2,
+#             label=fr'$\Omega$ = {Omega} %'
+#         )
+#     )
+
+# # Line styles
+# legend_elements += [
+#     Line2D([0], [0], color='black', lw=2, label='Continuum'),
+#     Line2D([0], [0], color='black', lw=2, linestyle='--', label='DPM'),
+# ]
+
+# ax_leg.legend(
+#     handles=legend_elements,
+#     loc='center',
+#     frameon=False,
+#     fontsize=14,
+#     ncol=1
+# )
+
+# plt.show()
 
 def r2_score(y, ypred):
     ss_res = np.sum((y - ypred)**2)

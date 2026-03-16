@@ -377,71 +377,71 @@ dt = 0.01
 
 plt.close('all')
 Omega_percent_list = [0, 1, 5, 10, 20]
-# for ui, ustar in enumerate(ustar_list):
-# # ui, ustar = 3, ustar_list[-1]
+for ui, ustar in enumerate(ustar_list):
+# ui, ustar = 3, ustar_list[-1]
 
-#     fig, axes = plt.subplots(3, 1, figsize=(7, 9), sharex=True)
-#     axC, axU, axUa = axes
+    fig, axes = plt.subplots(3, 1, figsize=(7, 9), sharex=True)
+    axC, axU, axUa = axes
     
-#     for oi, Omega in enumerate(Omega_list):
+    for oi, Omega in enumerate(Omega_list):
     
-#         # measured series
-#         idx     = oi*len(ustar_list) + ui
-#         C_meas  = C_dpm[idx]
-#         U_meas  = U_dpm[idx]
-#         Ua_meas = Ua_dpm[idx]
-#         t_meas  = np.linspace(0, 5, len(C_meas))
+        # measured series
+        idx     = oi*len(ustar_list) + ui
+        C_meas  = C_dpm[idx]
+        U_meas  = U_dpm[idx]
+        Ua_meas = Ua_dpm[idx]
+        t_meas  = np.linspace(0, 5, len(C_meas))
     
-#         # detect start idx
-#         start_idx = detect_start_idx(C_meas, Cref_start)
-#         if start_idx is None:
-#             continue
+        # detect start idx
+        start_idx = detect_start_idx(C_meas, Cref_start)
+        if start_idx is None:
+            continue
     
-#         # model series (already trimmed in simulate_model)
-#         C_mod  = model_run[Omega][ustar]['c']
-#         U_mod  = model_run[Omega][ustar]['U']
-#         Ua_mod = model_run[Omega][ustar]['Ua']
-#         t_mod  = model_run[Omega][ustar]['t']
+        # model series (already trimmed in simulate_model)
+        C_mod  = model_run[Omega][ustar]['c']
+        U_mod  = model_run[Omega][ustar]['U']
+        Ua_mod = model_run[Omega][ustar]['Ua']
+        t_mod  = model_run[Omega][ustar]['t']
     
-#         # Now SHIFT model time to actual real time
-#         t_mod_shifted = t_mod + (start_idx * dt)
+        # Now SHIFT model time to actual real time
+        t_mod_shifted = t_mod + (start_idx * dt)
     
-#         label = f'Ω={Omega_percent_list[oi]} %'
+        label = f'Ω={Omega_percent_list[oi]} %'
     
-#         # --- Plot C ---
-#         axC.plot(t_meas, C_meas, '--', color=colors[oi])
-#         axC.plot(t_mod_shifted, C_mod, color=colors[oi], label=f'{label}')
+        # --- Plot C ---
+        axC.plot(t_meas, C_meas, '--', color=colors[oi])
+        axC.plot(t_mod_shifted, C_mod, color=colors[oi], marker='*',markevery=[0], markersize=8, markeredgewidth=1.2, label=f'{label}')
     
-#         # --- Plot U ---
-#         axU.plot(t_meas, U_meas, '--', color=colors[oi])
-#         axU.plot(t_mod_shifted, U_mod, color=colors[oi])
+        # --- Plot U ---
+        axU.plot(t_meas, U_meas, '--', color=colors[oi])
+        axU.plot(t_mod_shifted, U_mod, color=colors[oi], marker='*',markevery=[0], markersize=8, markeredgewidth=1.2)
     
-#         # --- Plot Ua ---
-#         axUa.plot(t_meas, Ua_meas, '--', color=colors[oi])
-#         axUa.plot(t_mod_shifted, Ua_mod, color=colors[oi])
+        # --- Plot Ua ---
+        axUa.plot(t_meas, Ua_meas, '--', color=colors[oi])
+        axUa.plot(t_mod_shifted, Ua_mod, color=colors[oi], marker='*',markevery=[0], markersize=8, markeredgewidth=1.2)
     
-#     axC.plot([], [], color='black', label=r"Continuum")
-#     axC.plot([], [], '--', color='black', label=r"DPM")
-#     axC.set_ylabel('C [kg/m²]', fontsize=14)
-#     axC.set_title(f'$\\tilde{{\\Theta}}$ = {Shields[ui]:.2f}', fontsize=14)
-#     axC.grid(True)
-#     axC.set_ylim(0, 0.30)
-#     axC.set_xlim(0, 5)
-#     axC.legend(fontsize=12)
+    axC.plot([], [], color='black', label=r"Continuum")
+    axC.plot([], [], '--', color='black', label=r"DPM")
+    axC.set_ylabel('C [kg/m²]', fontsize=14)
+    axC.set_title(f'$\\tilde{{\\Theta}}$ = {Shields[ui]:.2f}', fontsize=14)
+    axC.grid(True)
+    axC.set_ylim(0, 0.30)
+    axC.set_xlim(0, 5)
+    axC.legend(fontsize=12)
     
-#     axU.set_ylabel('U [m/s]', fontsize=14)
-#     axU.set_ylim(0, 9.5)
-#     axU.set_xlim(0, 5)
-#     axU.grid(True)
+    axU.set_ylabel('U [m/s]', fontsize=14)
+    axU.set_ylim(0, 9.5)
+    axU.set_xlim(0, 5)
+    axU.grid(True)
     
-#     axUa.set_ylabel('Ua [m/s]', fontsize=14)
-#     axUa.set_xlabel('t [s]')
-#     axUa.set_ylim(0, 13.5)
-#     axUa.set_xlim(0, 5)
-#     axUa.grid(True)
+    axUa.set_ylabel('Ua [m/s]', fontsize=14)
+    axUa.set_xlabel('t [s]')
+    axUa.set_ylim(0, 13.5)
+    axUa.set_xlim(0, 5)
+    axUa.grid(True)
     
-#     plt.tight_layout()
-#     plt.show()
+    plt.tight_layout()
+    plt.show()
     
 # in one figure
 fig = plt.figure(figsize=(12, 24))
