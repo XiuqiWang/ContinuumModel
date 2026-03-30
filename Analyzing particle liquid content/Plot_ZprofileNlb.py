@@ -99,7 +99,7 @@ def mean_bridges_per_particle_z_mean_of_ratios(
     d=0.00025,
     z_max=800,
     dz_factor=2,
-    z_target=11
+    z_target=12
 ):
     """
     Compute mean number of liquid bridges per particle as a function of height
@@ -159,23 +159,90 @@ def mean_bridges_per_particle_z_mean_of_ratios(
 
     return z_centers, mean_bridges, Nlb_z_target
 
+# from typing import List, Tuple, Optional
+
+# def split_three_windows_by_threshold_index(
+#     C,
+#     threshold: float = 0.075,
+# ) -> List[Tuple[int, int]]:
+#     """
+#     Split a uniformly-sampled C array into 3 index windows:
+#       1) 0 -> first index where C crosses upward to >= threshold
+#       2) overshoot: indices where C > threshold
+#       3) after overshoot until end
+
+#     Returns index windows (start_idx, end_idx) with end exclusive.
+
+#     If no up-crossing occurs: returns [(0, n)].
+#     If up-crossing occurs but no down-crossing after:
+#         returns [(0, up_idx+1), (up_idx+1, n)].
+#     """
+
+#     C = np.asarray(C, dtype=float)
+#     n = C.size
+
+#     if n < 2:
+#         raise ValueError("C must have at least 2 samples.")
+
+#     # ---- Find first up-crossing ----
+#     up_idx: Optional[int] = None
+#     for i in range(n - 1):
+#         if C[i] < threshold <= C[i + 1]:
+#             up_idx = i + 1  # first index >= threshold
+#             break
+
+#     if up_idx is None:
+#         return [(0, n)]
+
+#     # ---- Find first down-crossing after overshoot ----
+#     down_idx: Optional[int] = None
+#     for i in range(up_idx, n - 1):
+#         if C[i] > threshold >= C[i + 1]:
+#             down_idx = i + 1  # first index <= threshold
+#             break
+
+#     if down_idx is None:
+#         return [
+#             (0, up_idx),
+#             (up_idx, n)
+#         ]
+
+#     return [
+#         (0, up_idx),
+#         (up_idx, down_idx),
+#         (down_idx, n)
+#     ]
+
 from typing import List, Tuple, Optional
 
-def split_three_windows_by_threshold_index(
+def split_three_windows_by_overshoot_recovery(
     C,
     threshold: float = 0.075,
+    final_fraction: float = 0.30,
+    recovery_tol: float = 0.15,
 ) -> List[Tuple[int, int]]:
     """
-    Split a uniformly-sampled C array into 3 index windows:
-      1) 0 -> first index where C crosses upward to >= threshold
-      2) overshoot: indices where C > threshold
-      3) after overshoot until end
+    Split a uniformly sampled C array into 3 index windows:
+      1) pre-overshoot: from 0 to the first index where C >= threshold
+      2) overshoot: from that index until C returns to within ± recovery_tol
+         of the reference mean computed over the final `final_fraction` of the record
+      3) post-overshoot / steady: from the recovery index to the end
 
-    Returns index windows (start_idx, end_idx) with end exclusive.
+    Returns
+    -------
+    List[Tuple[int, int]]
+        Index windows (start_idx, end_idx), with end exclusive.
 
-    If no up-crossing occurs: returns [(0, n)].
-    If up-crossing occurs but no down-crossing after:
-        returns [(0, up_idx+1), (up_idx+1, n)].
+    Notes
+    -----
+    - The reference mean is computed over the final `final_fraction` of the record.
+    - "Within ±15%" means:
+          abs(C[i] - C_ref) <= recovery_tol * C_ref
+      if C_ref > 0.
+    - If C_ref == 0, absolute equality is used.
+    - If no threshold crossing occurs, returns [(0, n)].
+    - If threshold crossing occurs but no recovery is found, returns:
+          [(0, up_idx), (up_idx, n)]
     """
 
     C = np.asarray(C, dtype=float)
@@ -184,33 +251,55 @@ def split_three_windows_by_threshold_index(
     if n < 2:
         raise ValueError("C must have at least 2 samples.")
 
-    # ---- Find first up-crossing ----
+    if not (0 < final_fraction <= 1):
+        raise ValueError("final_fraction must be in the interval (0, 1].")
+
+    if recovery_tol < 0:
+        raise ValueError("recovery_tol must be non-negative.")
+
+    # ---- Compute reference mean over final fraction of the record ----
+    tail_len = max(1, int(np.ceil(final_fraction * n)))
+    tail_start = n - tail_len
+    C_ref = np.mean(C[tail_start:])
+
+    # ---- Find first index where C >= threshold ----
     up_idx: Optional[int] = None
-    for i in range(n - 1):
-        if C[i] < threshold <= C[i + 1]:
-            up_idx = i + 1  # first index >= threshold
+    for i in range(n):
+        if C[i] >= threshold:
+            up_idx = i
             break
 
     if up_idx is None:
         return [(0, n)]
 
-    # ---- Find first down-crossing after overshoot ----
-    down_idx: Optional[int] = None
-    for i in range(up_idx, n - 1):
-        if C[i] > threshold >= C[i + 1]:
-            down_idx = i + 1  # first index <= threshold
+    # ---- Define recovery band around reference mean ----
+    if C_ref == 0:
+        def in_recovery_band(x: float) -> bool:
+            return x == 0
+    else:
+        lower = (1.0 - recovery_tol) * C_ref
+        upper = (1.0 + recovery_tol) * C_ref
+
+        def in_recovery_band(x: float) -> bool:
+            return lower <= x <= upper
+
+    # ---- Find first recovery after overshoot begins ----
+    recovery_idx: Optional[int] = None
+    for i in range(up_idx + 1, n):
+        if in_recovery_band(C[i]):
+            recovery_idx = i
             break
 
-    if down_idx is None:
+    if recovery_idx is None:
         return [
             (0, up_idx),
-            (up_idx, n)
+            (up_idx, n),
         ]
 
     return [
         (0, up_idx),
-        (up_idx, down_idx),
-        (down_idx, n)
+        (up_idx, recovery_idx),
+        (recovery_idx, n),
     ]
 
 moisture_tags = ["M1LB", "M5LBR1", "M10LBR1", "M20LB"]
@@ -228,11 +317,13 @@ for label in omega_labels:
     C_dpm.append(C)
 
 profiles = {tag: [] for tag in moisture_tags}
+index_store = {tag: [] for tag in moisture_tags}
 
 for i, tag in enumerate(moisture_tags):
-        index_windows_by_moisture = split_three_windows_by_threshold_index(C_dpm[i], threshold=0.075)
+        index_windows_by_moisture = split_three_windows_by_overshoot_recovery(C_dpm[i], threshold=0.075)
         # index_by_moisture = [(0, 1)] + index_windows_by_moisture
         print(index_windows_by_moisture)
+        index_store[tag].append(index_windows_by_moisture)
         for i0, i1 in index_windows_by_moisture:
             
             zc, mean_b, _ = mean_bridges_per_particle_z_mean_of_ratios(
@@ -242,9 +333,10 @@ for i, tag in enumerate(moisture_tags):
                 index_range=(i0, i1),
                 d=0.00025,
                 dz_factor=2,
-                z_target=12
+                z_target=11
             )
-    
+            
+            
             profiles[tag].append((zc, mean_b))
 
 
@@ -333,19 +425,30 @@ def smooth_moving_average_preserve_edges(data, window=11):
 
 Nlb = smooth_moving_average_preserve_edges(profiles_tv["M20LB"][0])
 
-plt.figure(figsize=(8, 6))
-plt.subplot(2,1,1)
-plt.plot(time_c, C)
-plt.grid()
-plt.xlabel("t [s]", fontsize=14)
-plt.xlim([0, 5])
-plt.ylabel(r"$c$ [kg/m$^2$]", fontsize=14)
-plt.subplot(2,1,2)
-plt.plot(time, Nlb)
-plt.grid()
-plt.xlim([0, 5])
-plt.xlabel("t [s]", fontsize=14)
-plt.ylabel(r"$N_{lb}$ at $z=11d$", fontsize=14)
+# Overshoot interval: (start_idx, end_idx) with end exclusive
+i0, i1 = index_store['M20LB'][0][1]
+# Convert indices to times
+t_start = time_c[i0]
+t_end = time_c[i1 - 1] if i1 > 0 else time_c[i1]   # last point inside the interval
+
+fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 6), sharex=False)
+
+ax1.plot(time_c, C)
+ax1.axvline(t_start, linestyle='--', color='grey', linewidth=1.5)
+ax1.axvline(t_end, linestyle='-.', color='grey', linewidth=1.5)
+ax1.grid()
+ax1.set_xlabel("t [s]", fontsize=14)
+ax1.set_xlim([0, 5])
+ax1.set_ylabel(r"$c$ [kg/m$^2$]", fontsize=14)
+
+ax2.plot(time, Nlb)
+ax2.axvline(t_start, linestyle='--', color='grey', linewidth=1.5)
+ax2.axvline(t_end, linestyle='-.', color='grey', linewidth=1.5)
+ax2.grid()
+ax2.set_xlim([0, 5])
+ax2.set_xlabel("t [s]", fontsize=14)
+ax2.set_ylabel(r"$N_{lb}$ at $z=11d$", fontsize=14)
+
 plt.tight_layout()
 plt.show()
 
@@ -368,11 +471,11 @@ plt.show()
 #     alpha=0.8
 #     )
         
-# plt.xlabel(r"$N_\mathrm{lb}$ [-]", fontsize=14)
+# plt.xlabel(r"$N_\mathrm{lb}$ [-]", fontsize=16)
 # plt.ylim(0, 20)
 # plt.grid(True, linestyle="--", alpha=0.5)
-# plt.ylabel(r"Elevation $z/d$ [-]", fontsize=14)
-# plt.legend(frameon=False, fontsize=12)
+# plt.ylabel(r"Elevation $z/d$ [-]", fontsize=16)
+# plt.legend(frameon=False, fontsize=13)
 # plt.tight_layout()
 # plt.show()
 
@@ -381,14 +484,14 @@ plt.show()
 # plt.subplot(2,1,1)
 # plt.plot(time_c, C)
 # plt.grid()
-# plt.xlabel("t [s]", fontsize=14)
+# plt.xlabel("$t$ [s]", fontsize=16)
 # plt.xlim([0, 5])
-# plt.ylabel(r"$c$ [kg/m$^2$]", fontsize=14)
+# plt.ylabel(r"$C$ [kg/m$^2$]", fontsize=16)
 # plt.subplot(2,1,2)
 # plt.plot(time, Nlb)
 # plt.grid()
 # plt.xlim([0, 5])
-# plt.xlabel("t [s]", fontsize=14)
-# plt.ylabel(r"$N_{lb}$ at $z=11d$", fontsize=14)
+# plt.xlabel("$t$ [s]", fontsize=16)
+# plt.ylabel(r"$N_\mathrm{lb}$ at $z=11d$", fontsize=16)
 # plt.tight_layout()
 # plt.show()
