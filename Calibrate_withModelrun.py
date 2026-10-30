@@ -422,20 +422,20 @@ for ui, ustar in enumerate(ustar_list):
     
     axC.plot([], [], color='black', label=r"Continuum")
     axC.plot([], [], '--', color='black', label=r"DPM")
-    axC.set_ylabel('C [kg/m²]', fontsize=14)
+    axC.set_ylabel('$C$ [kg/m²]', fontsize=16)
     axC.set_title(f'$\\tilde{{\\Theta}}$ = {Shields[ui]:.2f}', fontsize=14)
     axC.grid(True)
     axC.set_ylim(0, 0.30)
     axC.set_xlim(0, 5)
-    axC.legend(fontsize=12)
+    axC.legend(fontsize=13)
     
-    axU.set_ylabel('U [m/s]', fontsize=14)
+    axU.set_ylabel('$U$ [m/s]', fontsize=16)
     axU.set_ylim(0, 9.5)
     axU.set_xlim(0, 5)
     axU.grid(True)
     
-    axUa.set_ylabel('Ua [m/s]', fontsize=14)
-    axUa.set_xlabel('t [s]')
+    axUa.set_ylabel('$U_\mathrm{a}$ [m/s]', fontsize=16)
+    axUa.set_xlabel('$t$ [s]', fontsize=16)
     axUa.set_ylim(0, 13.5)
     axUa.set_xlim(0, 5)
     axUa.grid(True)
@@ -443,26 +443,26 @@ for ui, ustar in enumerate(ustar_list):
     plt.tight_layout()
     plt.show()
     
-# in one figure
-fig = plt.figure(figsize=(12, 24))
+# # in one figure
+textwidth_pt = 507.50787
+fig_width = textwidth_pt / 72.27   # = 7.02 in
+fig_height = 4.2                   # adjust if needed
 
-# Outer grid: 2 rows × 2 columns
+fig = plt.figure(figsize=(fig_width, fig_height))
+
+# 1 row × 5 columns
 outer = GridSpec(
-    2, 2,
+    1, 5,
     figure=fig,
-    width_ratios=[1, 1],
-    wspace=0.25,
-    hspace=0.25
+    wspace=0.25
 )
 
-for ui, ustar in enumerate(ustar_list[:4]):  # only first 4 Shields
-
-    row = ui // 2
-    col = ui % 2
+for ui, ustar in enumerate(ustar_list):
 
     inner = GridSpecFromSubplotSpec(
         3, 1,
-        subplot_spec=outer[row, col]
+        subplot_spec=outer[0, ui],
+        hspace=0.10
     )
 
     axC  = fig.add_subplot(inner[0])
@@ -471,87 +471,71 @@ for ui, ustar in enumerate(ustar_list[:4]):  # only first 4 Shields
 
     for oi, Omega in enumerate(Omega_list):
 
-        idx     = oi * len(ustar_list) + ui
-        C_meas  = C_dpm[idx]
-        U_meas  = U_dpm[idx]
-        Ua_meas = Ua_dpm[idx]
-        t_meas  = np.linspace(0, 5, len(C_meas))
+        idx = oi * len(ustar_list) + ui
 
-        start_idx = detect_start_idx(C_meas, Cref_start)
-        if start_idx is None:
-            continue
+        C_meas  = np.asarray(C_dpm[idx])
+        U_meas  = np.asarray(U_dpm[idx])
+        Ua_meas = np.asarray(Ua_dpm[idx])
+        t_meas  = np.linspace(0, 5, len(C_meas))
 
         C_mod  = model_run[Omega][ustar]['c']
         U_mod  = model_run[Omega][ustar]['U']
         Ua_mod = model_run[Omega][ustar]['Ua']
-        t_mod  = model_run[Omega][ustar]['t']
 
-        t_mod_shifted = t_mod + (start_idx * dt)
-        print(start_idx)
+        axC.plot(t_mod, C_mod, color=colors[oi], lw=1)
+        axC.plot(t_meas, C_meas, '--', color=colors[oi], lw=1)
 
-        axC.plot(t_mod_shifted, C_mod, color=colors[oi], marker='*',markevery=[0], markersize=8, markeredgewidth=1.2)
-        axC.plot(t_meas, C_meas, '--', color=colors[oi])
+        axU.plot(t_mod, U_mod, color=colors[oi], lw=1)
+        axU.plot(t_meas, U_meas, '--', color=colors[oi], lw=1)
 
-        axU.plot(t_mod_shifted, U_mod, color=colors[oi], marker='*',markevery=[0], markersize=8, markeredgewidth=1.2)
-        axU.plot(t_meas, U_meas, '--', color=colors[oi])
+        axUa.plot(t_mod, Ua_mod, color=colors[oi], lw=1)
+        axUa.plot(t_meas, Ua_meas, '--', color=colors[oi], lw=1)
 
-        axUa.plot(t_mod_shifted, Ua_mod, color=colors[oi], marker='*',markevery=[0], markersize=8, markeredgewidth=1.2)
-        axUa.plot(t_meas, Ua_meas, '--', color=colors[oi])
+    axC.set_title(fr'$\tilde{{\Theta}}$ = {Shields[ui]:.2f}', fontsize=8)
 
-    axC.set_title(fr'$\tilde{{\Theta}}$ = {Shields[ui]:.2f}', fontsize=14)
-    axC.set_ylim(0, 0.4)
-    axC.set_xlim(0, 5)
-    axC.grid(True)
-
+    axC.set_ylim(0, 0.3)
     axU.set_ylim(0, 9.5)
-    axU.set_xlim(0, 5)
-    axU.grid(True)
+    axUa.set_ylim(4, 13.5)
 
-    axUa.set_ylim(0, 13.5)
-    axUa.set_xlim(0, 5)
-    axUa.set_xlabel(r'$t$ [s]', fontsize=14)
-    axUa.grid(True)
+    for ax in (axC, axU, axUa):
+        ax.set_xlim(0, 5)
+        ax.grid(True, alpha=0.3)
+        ax.tick_params(axis='both', labelsize=6)
 
-    if col == 0:
-        axC.set_ylabel(r'$c$ [kg/m$^2$]', fontsize=14)
-        axU.set_ylabel(r'$U$ [m/s]', fontsize=14)
-        axUa.set_ylabel(r'$U_\mathrm{air}$ [m/s]', fontsize=14)
+    axC.tick_params(labelbottom=False)
+    axU.tick_params(labelbottom=False)
+    axUa.set_xlabel(r'$t$ [s]', fontsize=8)
+
+    if ui == 0:
+        axC.set_ylabel(r'$c$ [kg/m$^2$]', fontsize=8)
+        axU.set_ylabel(r'$U$ [m/s]', fontsize=8)
+        axUa.set_ylabel(r'$U_\mathrm{air}$ [m/s]', fontsize=8)
     else:
         for ax in (axC, axU, axUa):
-            ax.set_yticklabels([])
+            ax.tick_params(axis='y', labelleft=False)
 
-# -------- FIGURE-LEVEL LEGEND --------
 legend_elements = []
-
 for oi, Omega in enumerate(Omega_integer_list):
     legend_elements.append(
-        Line2D([0], [0], color=colors[oi], lw=2,
-                label=fr'$\Omega$ = {Omega} %')
+        Line2D([0], [0], color=colors[oi], lw=1.5,
+               label=fr'$\Omega$ = {Omega} %')
     )
 
 legend_elements += [
-    Line2D([0], [0], color='black', lw=2, label='Continuum'),
-    Line2D([0], [0], color='black', lw=2, linestyle='--', label='DPM'),
+    Line2D([0], [0], color='black', lw=1.5, label='Continuum'),
+    Line2D([0], [0], color='black', lw=1.5, linestyle='--', label='DPM'),
 ]
-
-# Leave space on the right for legend
-fig.subplots_adjust(
-    left=0.08,
-    right=0.8,   # reserve space for legend
-    bottom=0.07,
-    top=0.95,
-    wspace=0.25,
-    hspace=0.25
-)
 
 fig.legend(
     handles=legend_elements,
-    loc='center left',
-    bbox_to_anchor=(0.84, 0.5),
+    loc='lower center',
+    bbox_to_anchor=(0.5, 0.02),
+    ncol=4,
     frameon=False,
-    fontsize=14
+    fontsize=7
 )
 
+fig.subplots_adjust(left=0.10, right=0.99, top=0.88, bottom=0.20)
 plt.show()
 
 def r2_score(y, ypred):
